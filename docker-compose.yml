@@ -23,7 +23,7 @@ services:
     env_file:
       - .env
     # Временно оставляем контейнер висеть в фоне, пока у нас пустой main.py
-    command: tail -f /dev/null
+    #command: tail -f /dev/null
 
 volumes:
   postgres_data:
