@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: hodu_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  scraper:
+    build: .
+    container_name: hodu_scraper
+    restart: on-failure
+    depends_on:
+      - db
+    env_file:
+      - .env
+    # Временно оставляем контейнер висеть в фоне, пока у нас пустой main.py
+    command: tail -f /dev/null
+
+volumes:
+  postgres_data:
