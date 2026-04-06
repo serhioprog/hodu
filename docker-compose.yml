@@ -22,8 +22,9 @@ services:
       - db
     env_file:
       - .env
-    # Временно оставляем контейнер висеть в фоне, пока у нас пустой main.py
-    #command: tail -f /dev/null
+    volumes:
+      - ./src:/app/src    # Теперь код синхронизируется Можно не делать build после каждой правки.
+      - ./data:/app/data  # СЮДА БУДУТ ЛИТЬСЯ  КАРТИНКИ
 
 volumes:
   postgres_data:

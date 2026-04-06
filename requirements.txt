@@ -3,6 +3,7 @@ httpx==0.27.2
 selectolax==0.4.7
 fake-useragent==1.5.1
 tenacity==8.2.3
+curl_cffi==0.7.1
 
 # database and validation
 pydantic==2.9.2
@@ -12,3 +13,7 @@ asyncpg==0.30.0
 
 # utilities
 loguru==0.7.2
+
+# export
+pandas>=2.2.3
+openpyxl==3.1.5
