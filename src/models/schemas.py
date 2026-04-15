@@ -11,21 +11,30 @@ class PropertyTemplate(BaseModel): # Это и есть наш "Шаблон"
     # Поля недвижимости (Все Optional, чтобы скрипт не падал, если чего-то нет)
     price: Optional[int] = None
     size_sqm: Optional[float] = None
-    land_size_sqm: Optional[float] = None  # Новое: площадь участка
+    land_size_sqm: Optional[float] = None
     bedrooms: Optional[int] = None
     bathrooms: Optional[int] = None
     year_built: Optional[int] = None
     location_raw: Optional[str] = None
-    area: Optional[str] = None             # Новое: Район
-    subarea: Optional[str] = None          # Новое: Подрайон
-    category: Optional[str] = None         # Новое: Тип (Вилла/Апартаменты)
-    levels: Optional[str] = None           # Новое: Уровни/Этажность
-    description: Optional[str] = ""        # Новое: Полное описание
+    area: Optional[str] = None
+    subarea: Optional[str] = None
+    category: Optional[str] = None
+    levels: Optional[str] = None
+    description: Optional[str] = ""
     latitude: Optional[float] = None
     longitude: Optional[float] = None
-    site_last_updated: Optional[str] = None # Новое: Дата обновления на сайте
+    site_last_updated: Optional[str] = None
     status: str = "ACTIVE"
     images: List[str] = []
+
+    #лОКАЦИИ АРИСА
+    location_id: Optional[int] = None
+    calc_prefecture: Optional[str] = None
+    calc_municipality: Optional[str] = None
+    calc_area: Optional[str] = None
+    
+    # Новое поле для любых дополнительных характеристик в виде словаря (например, терраса, бассейн, вид на море и т.д.)
+    extra_features: dict = {}
 
     # ЛОГИКА ФИЛЬТРАЦИИ (Чистим данные прямо при заполнении шаблона)-----------
     
@@ -44,16 +53,23 @@ class PropertyTemplate(BaseModel): # Это и есть наш "Шаблон"
         if not prices: 
             return None
             
-        # Берем ПОСЛЕДНЮЮ найденную цену
-        last_price_str = prices[-1]
-        
-        # Теперь удаляем точки и запятые, чтобы получить чистое число
-        clean_num = re.sub(r'[^\d]', '', last_price_str)
-        
-        try:
-            return int(clean_num)
-        except ValueError:
-            return None
+        # --- БРОНЕЖИЛЕТ ОТ МУСОРА ---
+        valid_prices = []
+        for p in prices:
+            # Удаляем точки и запятые, чтобы получить чистое число
+            clean_num_str = re.sub(r'[^\d]', '', p)
+            if clean_num_str:
+                num = int(clean_num_str)
+                # Отсеиваем мусор: цена виллы не может быть меньше 1000 евро
+                if num > 1000:
+                    valid_prices.append(num)
+                    
+        # Если после фильтрации остались адекватные цены
+        if valid_prices:
+            # Берем ПОСЛЕДНЮЮ валидную цену
+            return valid_prices[-1]
+            
+        return None
 
     @field_validator('size_sqm','land_size_sqm', mode='before')
     def clean_float(cls, v):

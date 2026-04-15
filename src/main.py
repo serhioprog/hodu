@@ -5,6 +5,7 @@ from src.database.db import async_session_maker
 from src.database.repository import save_or_update_property, save_media_records # Добавили save_media_records
 from src.models.schemas import PropertyTemplate
 from src.services.media import MediaDownloader # Добавили импорт MediaDownloader
+from src.services.geo_matcher import GeoMatcher
 
 async def main():
     logger.info("🚀 Запуск Full Pipeline: Collector + Deep Extractor")
@@ -26,8 +27,12 @@ async def main():
     
     # Инициализируем наш загрузчик картинок
     media_downloader = MediaDownloader()
+
+    # Инициализируем GeoMatcher для определения локаций
+    geo_matcher = GeoMatcher()
     
     async with async_session_maker() as session:
+        await geo_matcher.load_locations(session) # <--Загружаем локации один раз в память
         for index, prop_data in enumerate(basic_properties, 1):
             try:
                 print(f"\n{'='*60}")
@@ -46,6 +51,16 @@ async def main():
                     # Принудительно обновляем базовые данные деталями,
                     # чтобы `details` перетерли пустые значения из `base_data`
                     base_data.update(details)
+
+                    # --- УМНАЯ ГЕОЛОКАЦИЯ ---
+                    geo_info = await geo_matcher.find_best_match(
+                        lat=base_data.get("latitude"),
+                        lng=base_data.get("longitude"),
+                        area_name=base_data.get("area")
+                    )
+                    if geo_info:
+                        base_data.update(geo_info)
+                        logger.success(f"📍 Локация вычислена: {geo_info['calc_area']}")
                     
                     # Валидируем финальный словарь
                     prop_validated = PropertyTemplate(**base_data)
