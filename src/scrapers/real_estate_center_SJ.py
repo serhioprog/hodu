@@ -136,7 +136,7 @@ class RealEstateCenterScraper:
         return all_properties
 
     async def fetch_details(self, url: str) -> dict:
-        """Глубокий парсинг внутренностей карточки (Основано на разведданных)"""
+        """Глубокий парсинг внутренностей карточки с УЛУЧШЕННОЙ логикой поиска"""
         try:
             async with AsyncSession(impersonate="chrome120") as session:
                 response = await session.get(url, timeout=30)
@@ -155,83 +155,78 @@ class RealEstateCenterScraper:
                     "longitude": None
                 }
 
-                # 1. Фотографии из слайдера
+                # 1. Фотографии
                 slides = parser.css(".swiper-slide img")
                 for slide in slides:
                     src = slide.attributes.get("src")
                     if src and src not in details["images"]:
                         details["images"].append(src)
 
-                # 2. Локация (Sub Area) - Ищем в параграфах
+                # 2. Локация
                 for p in parser.css("p"):
                     p_text = p.text(strip=True)
                     if "Sub Area:" in p_text:
                         details["subarea"] = p_text.replace("Sub Area:", "").strip()
                         break
 
-                # 3. Удобства и особенности (#features)
+                # 3. Удобства
                 features_block = parser.css_first("#features")
                 if features_block:
                     feature_items = [li.text(strip=True) for li in features_block.css("li")]
                     details["extra_features"]["raw_features"] = " | ".join(feature_items)
 
-                # 4. Координаты (ВЗЛОМ JS Скрипта - Версия с переменными)
-                # Ищем const lat = "40.0059436" или var lng = '23.415'
+                # 4. Координаты
                 lat_match = re.search(r'lat\s*=\s*["\']([-\d.]+)["\']', html_content)
                 lng_match = re.search(r'lng\s*=\s*["\']([-\d.]+)["\']', html_content)
-                
                 if lat_match and lng_match:
                     try:
                         details["latitude"] = float(lat_match.group(1))
                         details["longitude"] = float(lng_match.group(1))
-                    except ValueError:
-                        pass
+                    except ValueError: pass
 
-                # 5. Описание и умный поиск данных внутри текста
+                # 5. Описание и УМНЫЙ поиск данных
                 desc_node = parser.css_first(".full-desc")
                 if desc_node:
                     desc_text = desc_node.text(separator="\n", strip=True)
                     details["description"] = desc_text
-
-                    # Ищем Type (Category) для этого сайта
                     search_text = (desc_text + " " + url).lower()
-                    prop_types = [
-                        "apartment", "maisonette", "villa", "detached house", 
-                        "residential complex", "hotel", "bungalow", "studio", 
-                        "residential building", "residencial building", "shop", 
-                        "land plot", "parcel"
-                    ]
+
+                    # --- ПОИСК ТИПА (Category) ---
+                    prop_types = ["apartment", "maisonette", "villa", "detached house", "residential complex", "hotel", "bungalow", "studio", "residential building", "shop", "land plot", "parcel"]
                     for pt in prop_types:
                         if pt in search_text or pt.replace(" ", "-") in search_text:
-                            # Записываем красиво с большой буквы
                             details["category"] = pt.title().replace("Residencial", "Residential")
                             break
 
-                    # Ищем год постройки: "Built in 2012"
-                    year_match = re.search(r'Built in\s*(\d{4})', desc_text, re.IGNORECASE)
+                    # --- ПОИСК ГОДА ПОСТРОЙКИ (Улучшенный + Безопасный) ---
+                    year_match = re.search(r'built[- ]?in\s*(\d{4})|built\s*(\d{4})', desc_text, re.IGNORECASE)
                     if year_match:
-                        details["year_built"] = int(year_match.group(1))
+                        year_val = year_match.group(1) or year_match.group(2)
+                        # 🔥 ПРОВЕРКА: Если это реально цифры, превращаем в int
+                        if year_val and year_val.isdigit():
+                            details["year_built"] = int(year_val)
+                        else:
+                            details["year_built"] = None
 
-                    # Ищем площадь участка (Land m2): "1,300 sq.m. garden" или "130 sqm private space"
-                    land_match = re.search(r'([\d.,]+)\s*(?:sq\.?m\.?|sqm|m²|sq\.? meters?)\s*(?:garden|private space|plot|land)', desc_text, re.IGNORECASE)
-                    if land_match:
-                        # Убираем запятые (1,300 -> 1300) и переводим в число
-                        clean_land = land_match.group(1).replace(',', '')
+                    # --- ПОИСК ПЛОЩАДИ УЧАСТКА (Супер Улучшенный) ---
+                    # Вариант А: "set on (over) 17,000 m2"
+                    land_a = re.search(r'set\s+on\s+(?:over\s+)?([\d.,]+)\s*(?:sq\.?m\.?|sqm|m²|sq\.? meters?)', desc_text, re.IGNORECASE)
+                    # Вариант Б: "1,000 m2 of land/garden"
+                    land_b = re.search(r'([\d.,]+)\s*(?:sq\.?m\.?|sqm|m²|sq\.? meters?)\s+of\s+(?:[\w\s,]{1,50})?(?:land|garden|plot|private space)', desc_text, re.IGNORECASE)
+                    
+                    land_res = land_a or land_b
+                    if land_res:
+                        clean_land = land_res.group(1).replace(',', '')
                         try:
                             details["land_size_sqm"] = float(clean_land)
-                        except ValueError:
-                            pass
+                        except ValueError: pass
 
-                    # Ищем этажность (Levels)
-                    levels_match = re.search(r'(?:across|over)\s+(one|two|three|four|five|\d+)\s+levels?', desc_text, re.IGNORECASE)
+                    # --- ПОИСК ЭТАЖЕЙ ---
+                    levels_match = re.search(r'(?:across|over|in)\s+(one|two|three|four|five|\d+)\s+levels?', desc_text, re.IGNORECASE)
                     if levels_match:
                         lvl_val = levels_match.group(1).lower()
-                        # 🔥 Сразу сохраняем как строки, чтобы Pydantic был счастлив
                         word_to_num = {'one': "1", 'two': "2", 'three': "3", 'four': "4", 'five': "5"}
-                        if lvl_val in word_to_num:
-                            details["levels"] = word_to_num[lvl_val]
-                        elif lvl_val.isdigit():
-                            details["levels"] = str(lvl_val)
+                        details["levels"] = word_to_num.get(lvl_val, lvl_val if lvl_val.isdigit() else None)
 
                 return details
 

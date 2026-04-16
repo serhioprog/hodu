@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>hodu Administration Panel</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    
+    <style>
+        body { background: #f7f7f7; font-family: -apple-system, sans-serif; color: #222; }
+        .nav-admin { background: white; border-bottom: 1px solid #eee; padding: 15px 0; }
+        .logo { color: #ff385c; font-weight: 800; font-size: 24px; letter-spacing: -1px; text-decoration: none; }
+        .main-card { background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); padding: 25px; margin-top: 30px; margin-bottom: 50px; }
+        
+        /* 🍔 Burger Menu */
+        .menu-btn { width: 44px; height: 44px; border-radius: 50%; background: #fff; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; color: #555; transition: all 0.2s; cursor: pointer; }
+        .menu-btn:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); color: #222; }
+        .dropdown-menu-custom { border-radius: 12px; border: 1px solid #ebebeb; box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 10px 0; min-width: 220px; margin-top: 10px !important; }
+        .dropdown-menu-custom .dropdown-item { padding: 10px 20px; font-weight: 500; color: #222; transition: background 0.2s; }
+        .dropdown-menu-custom .dropdown-item:hover { background-color: #f7f7f7; }
+        .dropdown-divider { margin: 8px 0; border-color: #ebebeb; }
+
+        /* Tabs */
+        .nav-tabs .nav-link { color: #555; font-weight: 600; border: none; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+        .nav-tabs .nav-link.active { color: #ff385c; background: none; border-color: #ff385c; }
+        .nav-tabs .nav-link:hover { border-color: #ff385c; color: #ff385c; }
+        
+        /* Tables */
+        .table-custom { font-size: 14px; vertical-align: middle; border-collapse: separate; border-spacing: 0; width: 100%; }
+        .table-custom th { text-transform: uppercase; font-size: 12px; color: #888; border-bottom: 2px solid #eee !important; padding-bottom: 10px; }
+        .table-custom td { border-bottom: 1px solid #eee; padding: 12px 8px; }
+        
+        /* Clickable Rows */
+        .clickable-row { cursor: pointer; }
+        .clickable-row td { transition: background-color 0.15s ease-in-out; }
+        .clickable-row:hover td { background-color: #e2e6ea !important; }
+        
+        /* Thumbnails */
+        .admin-thumb { width: 60px; height: 45px; object-fit: cover; border-radius: 6px; background-color: #e9ecef; }
+        .admin-thumb-empty { width: 60px; height: 45px; border-radius: 6px; background-color: #e9ecef; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #adb5bd; }
+
+        /* Badges */
+        .badge-new { background: #e6f4ea; color: #1e7e34; font-weight: 700; border: 1px solid #cce8d6; }
+        .badge-price { background: #fce8e6; color: #d93025; font-weight: 700; border: 1px solid #fad2cf; }
+        .badge-delisted { background: #f1f3f4; color: #3c4043; font-weight: 700; border: 1px solid #dadce0; }
+        .badge-active { background: #fff; color: #5f6368; font-weight: 600; border: 1px solid #dadce0; }
+        
+        /* Filters */
+        .filter-panel { background: #fff; padding: 18px 20px 6px 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.03); border: 1px solid #ebebeb; }
+        .filter-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #888; font-weight: 700; margin-bottom: 6px; display: block; }
+        .price-dash { background: transparent; border-left: none; border-right: none; color: #888; padding: 0 8px; display: flex; align-items: center; }
+        
+        /* Пагинация */
+        .dataTables_wrapper .pagination { gap: 8px; justify-content: flex-end; margin-top: 10px; }
+        .dataTables_wrapper .page-item .page-link { border: none !important; border-bottom: 3px solid transparent !important; border-radius: 0 !important; color: #555; font-size: 15px; font-weight: 600; padding: 8px 12px; background-color: transparent !important; transition: all 0.2s ease; margin-left: 0; }
+        .dataTables_wrapper .page-item.active .page-link { color: #ff385c !important; border-bottom-color: #ff385c !important; box-shadow: none !important; background-color: transparent !important; }
+        .dataTables_wrapper .page-item .page-link:hover { color: #ff385c !important; border-bottom-color: #ff385c !important; background-color: transparent !important; }
+        .dataTables_wrapper .page-item.disabled .page-link { color: #bbb !important; border-bottom-color: transparent !important; }
+        .dataTables_info { padding-top: 1rem !important; font-weight: 500; }
+    </style>
+</head>
+<body>
+
+<nav class="nav-admin">
+    <div class="container d-flex justify-content-between align-items-center">
+        <a href="/daily-report" class="logo">hodu.</a>
+        
+        <div class="dropdown">
+            <button class="menu-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-custom">
+                <li><a class="dropdown-item" href="/daily-report">Dashboard</a></li>
+                {% if current_user and current_user.is_admin %}
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="/admin">Control Panel</a></li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<div class="container">
+    <div class="main-card">
+        <ul class="nav nav-tabs mb-4" id="adminTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-properties" type="button">Properties</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-users" type="button">Users Management</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-settings" type="button">System Settings</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="adminTabsContent">
+            
+            <div class="tab-pane fade show active" id="tab-properties">
+                
+                <div class="filter-panel">
+                    <div class="row align-items-end g-3">
+                        
+                        <div class="col-md-1 mb-3">
+                            <label class="filter-label">SHOW</label>
+                            <select id="customLength" class="form-select form-select-sm">
+                                <option value="10">10</option>
+                                <option value="25" selected>25</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-3 mb-3">
+                            <label class="filter-label">SEARCH</label>
+                            <input type="text" id="customSearch" class="form-control form-control-sm" placeholder="Search anything...">
+                        </div>
+
+                        <div class="col-md-2 mb-3">
+                            <label class="filter-label">AREA</label>
+                            <select id="filterArea" class="form-select form-select-sm">
+                                <option value="">All areas</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-2 mb-3">
+                            <label class="filter-label">TYPE</label>
+                            <select id="filterType" class="form-select form-select-sm">
+                                <option value="">All types</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-3 mb-3">
+                            <label class="filter-label">PRICE (€)</label>
+                            <div class="input-group input-group-sm">
+                                <input type="number" id="filterPriceMin" class="form-control" placeholder="Min" min="0">
+                                <span class="input-group-text price-dash">-</span>
+                                <input type="number" id="filterPriceMax" class="form-control" placeholder="Max" min="0">
+                            </div>
+                        </div>
+
+                        <div class="col-md-1 mb-3">
+                            <label class="filter-label">STATUS</label>
+                            <select id="filterStatus" class="form-select form-select-sm">
+                                <option value="">All</option>
+                                <option value="NEW">New</option>
+                                <option value="PRICE DROP">Drop</option>
+                                <option value="ACTIVE">Active</option>
+                            </select>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-custom" id="propertiesTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 60px;">Photo</th>
+                                <th>HODU ID</th>
+                                <th>SITE ID</th>
+                                <th>Area</th>
+                                <th>Type</th>
+                                <th>Size</th>
+                                <th>Price</th>
+                                <th>Status</th>
+                                <th>Last Checked</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for prop in properties %}
+                            <tr class="clickable-row" onclick="window.open('/property/{{ prop.id }}', '_blank')">
+                                <td>
+                                    {% if prop.media %}
+                                        <img src="/{{ prop.media[0].local_file_path | fix_path }}" class="admin-thumb" alt="thumb">
+                                    {% else %}
+                                        <div class="admin-thumb-empty">N/A</div>
+                                    {% endif %}
+                                </td>
+                                <td class="text-muted fw-bold">{{ (prop.id | string)[:6] | upper }}</td>
+                                <td class="fw-bold">{{ prop.site_property_id }}</td>
+                                <td>{{ prop.calc_municipality or prop.area or '—' }}</td>
+                                <td>{{ prop.category }}</td>
+                                <td>{{ prop.size_sqm|int }} m²</td>
+                                <td class="fw-bold text-nowrap" data-sort="{{ prop.price }}">{{ "{:,.0f}".format(prop.price).replace(',', ' ') }} €</td>
+                                <td>
+                                    {% if prop.status == 'NEW' %}
+                                        <span class="badge badge-new">NEW</span>
+                                    {% elif prop.status == 'PRICE_CHANGED' %}
+                                        <span class="badge badge-price">PRICE DROP</span>
+                                    {% elif not prop.is_active or prop.status == 'DELISTED' %}
+                                        <span class="badge badge-delisted">DELISTED</span>
+                                    {% else %}
+                                        <span class="badge badge-active">ACTIVE</span>
+                                    {% endif %}
+                                </td>
+                                <td class="small text-muted fw-medium text-nowrap">
+                                    {{ prop.last_checked_at.strftime('%d.%m.%Y %H:%M') if prop.last_checked_at else '—' }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="tab-users">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h5 class="mb-0">Agents & Users</h5>
+                    <button class="btn btn-dark btn-sm fw-bold">+ Add New Agent</button>
+                </div>
+                <table class="table table-hover table-custom">
+                    <thead>
+                        <tr>
+                            <th>Name / Email</th>
+                            <th>Status</th>
+                            <th>Role</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td>
+                                <div class="fw-bold">{{ user.name }}</div>
+                                <div class="small text-muted">{{ user.email }}</div>
+                            </td>
+                            <td>
+                                {% if user.is_active %}
+                                    <span class="badge badge-new">Active</span>
+                                {% else %}
+                                    <span class="badge badge-price">Blocked</span>
+                                {% endif %}
+                            </td>
+                            <td>{% if user.is_admin %} Administrator {% else %} Agent {% endif %}</td>
+                            <td class="text-end">
+                                {% if user.id != current_user.id %}
+                                <form action="/admin/users/{{ user.id }}/toggle" method="post">
+                                    <button class="btn btn-sm btn-outline-dark fw-bold">
+                                        {{ "Block" if user.is_active else "Unblock" }}
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="tab-pane fade" id="tab-settings">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5 class="mb-4">Automation Settings</h5>
+                        <form action="/admin/settings/update" method="post">
+                            <div class="mb-4">
+                                <label class="form-label text-muted small fw-bold">SCRAPER START TIME (Sync)</label>
+                                <input type="time" name="sync_time" class="form-control" value="{{ sync_time }}">
+                            </div>
+                            <div class="mb-4">
+                                <label class="form-label text-muted small fw-bold">REPORT DELIVERY TIME (Email)</label>
+                                <input type="time" name="report_time" class="form-control" value="{{ report_time }}">
+                            </div>
+                            <button type="submit" class="btn text-white w-100 fw-bold" style="background: #ff385c;">Save Settings</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+<script>
+    $(document).ready(function() {
+        
+        $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
+            if (settings.nTable.id !== 'propertiesTable') { return true; }
+            var min = parseInt($('#filterPriceMin').val(), 10);
+            var max = parseInt($('#filterPriceMax').val(), 10);
+            var price = parseFloat(data[6].replace(/[^\d]/g, ''));
+            if ( (isNaN(min) && isNaN(max)) || (isNaN(min) && price <= max) || (min <= price && isNaN(max)) || (min <= price && price <= max) ) { return true; }
+            return false;
+        });
+
+        var table = $('#propertiesTable').DataTable({
+            dom: "<'row'<'col-sm-12'tr>><'row mt-3 align-items-center'<'col-sm-12 col-md-5 small text-muted'i><'col-sm-12 col-md-7 d-flex justify-content-end'p>>",
+            order: [[ 1, 'desc' ]], 
+            pageLength: 25,
+            columnDefs: [{ orderable: false, targets: 0 }]
+        });
+
+        $('#customLength').on('change', function() { table.page.len($(this).val()).draw(); });
+        $('#customSearch').on('keyup', function() { table.search($(this).val()).draw(); });
+
+        table.column(3).data().unique().sort().each(function (d, j) {
+            var val = $('<div/>').html(d).text().trim(); 
+            if (val && val !== '—') { $('#filterArea').append('<option value="' + val + '">' + val + '</option>'); }
+        });
+
+        table.column(4).data().unique().sort().each(function (d, j) {
+            var val = $('<div/>').html(d).text().trim(); 
+            if (val && val !== '—') { $('#filterType').append('<option value="' + val + '">' + val + '</option>'); }
+        });
+
+        $('#filterStatus').on('change', function () {
+            var val = $.fn.dataTable.util.escapeRegex($(this).val());
+            table.column(7).search(val ? val : '', true, false).draw();
+        });
+
+        $('#filterArea').on('change', function () {
+            var val = $.fn.dataTable.util.escapeRegex($(this).val());
+            table.column(3).search(val ? '^' + val + '$' : '', true, false).draw();
+        });
+
+        $('#filterType').on('change', function () {
+            var val = $.fn.dataTable.util.escapeRegex($(this).val());
+            table.column(4).search(val ? '^' + val + '$' : '', true, false).draw();
+        });
+
+        $('#filterPriceMin, #filterPriceMax').on('keyup change', function() { table.draw(); });
+    });
+</script>
+
+</body>
+</html>

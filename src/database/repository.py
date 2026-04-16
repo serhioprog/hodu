@@ -1,17 +1,17 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from src.models.domain import Property, Media
-from src.models.schemas import PropertyTemplate # <-- Убедись что тут PropertyTemplate
+from src.models.domain import Property, Media, PropertyStatus
+from src.models.schemas import PropertyTemplate
 from loguru import logger
 import uuid
 
 async def save_or_update_property(session: AsyncSession, data: PropertyTemplate):
-    """Сохраняет объект и возвращает его внутренний UUID и список ссылок на фото"""
+    """Умное сохранение: не затирает статусы и отслеживает новинки"""
     try:
         property_dict = data.model_dump()
-        # Извлекаем список картинок. Если их нет, будет пустой список []
         images = property_dict.pop("images", [])
         
+        # Ищем по URL
         query = select(Property).where(Property.url == data.url)
         result = await session.execute(query)
         existing_prop = result.scalar_one_or_none()
@@ -19,18 +19,24 @@ async def save_or_update_property(session: AsyncSession, data: PropertyTemplate)
         property_uuid = None
 
         if existing_prop:
+            # Список полей, которые нельзя перезаписывать вслепую (чтобы не убить статус PRICE_CHANGED)
+            protected_fields = {"status", "is_active", "previous_price", "last_seen_at"}
+            
             for key, value in property_dict.items():
-                setattr(existing_prop, key, value)
+                if key not in protected_fields and value is not None:
+                    setattr(existing_prop, key, value)
             property_uuid = existing_prop.id
         else:
+            # Это новый объект — ставим статус NEW
+            property_dict["status"] = PropertyStatus.NEW.value
+            property_dict["is_active"] = True
+            
             new_prop = Property(**property_dict)
             session.add(new_prop)
             await session.flush()
             property_uuid = new_prop.id
         
         await session.commit()
-        
-        # ВАЖНО: Мы возвращаем UUID и список images обратно в main.py
         return property_uuid, images
 
     except Exception as e:

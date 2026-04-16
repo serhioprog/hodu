@@ -13,6 +13,8 @@ def utcnow():
     return datetime.now(timezone.utc)
 
 class PropertyStatus(str, enum.Enum):
+    PRICE_CHANGED = "PRICE_CHANGED"
+    NEW = "NEW"
     ACTIVE = "ACTIVE"
     DELISTED = "DELISTED"
     SOLD = "SOLD"
@@ -26,6 +28,7 @@ class Property(Base):
     url = Column(String(500), unique=True, nullable=False)
 
     price = Column(Integer, nullable=True)
+    previous_price = Column(Integer, nullable=True)
     size_sqm = Column(Float, nullable=True)
     land_size_sqm = Column(Float, nullable=True)
     bedrooms = Column(Integer, nullable=True)
@@ -43,12 +46,14 @@ class Property(Base):
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
     
-    status = Column(String, default=PropertyStatus.ACTIVE.value, index=True)
+    status = Column(String, default=PropertyStatus.NEW.value, index=True)
+    is_active = Column(Boolean, default=True, index=True)
     extra_features = Column(JSONB, nullable=True, default=dict)
 
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     last_checked_at = Column(DateTime(timezone=True), default=utcnow)
+    last_seen_at = Column(DateTime(timezone=True), default=utcnow)
 
     media = relationship("Media", back_populates="property", cascade="all, delete-orphan")
     price_history = relationship("PriceHistory", back_populates="property", cascade="all, delete-orphan")
@@ -85,7 +90,7 @@ class PriceHistory(Base):
     property = relationship("Property", back_populates="price_history")
 
 # ==========================================
-# НОВЫЙ БЛОК ЛОКАЦИЙ (Полностью совпадает с твоими SQL дампами)
+# НОВЫЙ БЛОК ЛОКАЦИЙ (Полностью совпадает с SQL дампами)
 # ==========================================
 
 class SdhtPrefecture(Base):
@@ -150,3 +155,73 @@ class SdhtArea(Base):
     updated_at = Column(String(100), nullable=True)
     active = Column(Integer, nullable=True)
     deleted = Column(Integer, nullable=True)
+
+    # ==========================================
+# НОВЫЙ БЛОК: СИСТЕМА B2B ДОСТУПА (АГЕНТЫ И ТОКЕНЫ)
+# ==========================================
+
+class Agent(Base):
+    """Таблица клиентов (Агентов по недвижимости)"""
+    __tablename__ = "agents"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    phone = Column(String(50), nullable=True)  # Для будущих SMS
+    
+    # Главный рубильник: если False, агент не получит письмо и не зайдет на сайт
+    is_active = Column(Boolean, default=True) 
+    is_admin = Column(Boolean, default=False)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    
+    # Связи
+    devices = relationship("AgentDevice", back_populates="agent", cascade="all, delete-orphan")
+    tokens = relationship("AuthToken", back_populates="agent", cascade="all, delete-orphan")
+
+class SystemSetting(Base):
+    """Таблица для хранения настроек (время парсинга, время рассылки)"""
+    __tablename__ = "system_settings"
+    
+    id = Column(Integer, primary_key=True)
+    key = Column(String(50), unique=True, index=True) # 'sync_time' или 'report_time'
+    value = Column(String(100)) # Например, '00:01'
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+class AgentDevice(Base):
+    """Таблица 'подписанных' браузеров агентов (Cookie)"""
+    __tablename__ = "agent_devices"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    agent_id = Column(UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
+    
+    # То самое длинное значение Cookie, которое мы положим агенту в браузер
+    device_cookie = Column(String(255), unique=True, index=True, nullable=False)
+    
+    # Инфа о браузере, чтобы ты видел, откуда он заходил (например, "Safari on iPhone")
+    user_agent_str = Column(String(500), nullable=True) 
+    
+    last_seen_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    
+    agent = relationship("Agent", back_populates="devices")
+
+
+class AuthToken(Base):
+    """Таблица Магических Ссылок (и OTP кодов)"""
+    __tablename__ = "auth_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    agent_id = Column(UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
+    
+    # Это либо длинный токен для ссылки (xY7z9P...), либо 4 цифры для SMS
+    token = Column(String(255), unique=True, index=True, nullable=False)
+    
+    # Если True, значит по ссылке уже кликнули. Второй раз она не сработает.
+    is_used = Column(Boolean, default=False)
+    
+    # Когда истекает срок действия (например, через 24 часа)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    
+    agent = relationship("Agent", back_populates="tokens")
