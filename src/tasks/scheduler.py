@@ -7,7 +7,7 @@ from sqlalchemy import select, func
 
 from src.database.db import async_session_maker
 from src.models.domain import Property, PropertyStatus, SystemSetting # Добавили SystemSetting
-from src.scripts.daily_sync import daily_sync
+from src.tasks.daily_sync import daily_sync
 from src.services.notifier import send_magic_links_to_agents
 
 scheduler = AsyncIOScheduler()

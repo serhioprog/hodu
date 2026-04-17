@@ -7,7 +7,9 @@ from src.core.config import settings
 # Создаем асинхронный движок
 engine = create_async_engine(
     settings.database_url,
-    echo=False, # Поставь True, если захочешь видеть все SQL-запросы в консоли
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=3600, #Принудительное обновление. Раз в час (3600 секунд)
     future=True,
     pool_size=20,
     max_overflow=10

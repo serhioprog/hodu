@@ -6,7 +6,7 @@ from loguru import logger
 from src.database.db import async_session_maker
 from src.models.domain import LocationArea
 
-async def seed_locations(sql_file_path="src/scripts/property_areas.sql"):
+async def seed_locations(sql_file_path="src/scripts/db_location_seed/property_areas.sql"):
     if not os.path.exists(sql_file_path):
         logger.error(f"❌ Файл {sql_file_path} не найден! Положи его в корень проекта.")
         return

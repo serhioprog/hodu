@@ -94,6 +94,9 @@ class PropertyTemplate(BaseModel): # Это и есть наш "Шаблон"
     def clean_coords(cls, v):
         if not v: return None
         try:
-            return float(str(v).strip())
+            # Заменяем запятую на точку и убираем лишние символы
+            clean_v = str(v).replace(',', '.').strip()
+            clean_v = re.sub(r'[^\d.-]', '', clean_v)
+            return float(clean_v)
         except ValueError:
             return None

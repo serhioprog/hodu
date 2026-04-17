@@ -53,9 +53,9 @@ async def load_inserts(file_path):
 
 async def main():
     # Порядок строгий: от главных к подчиненным
-    await load_inserts('src/scripts/SdHt_property_prefectures.sql')
-    await load_inserts('src/scripts/SdHt_property_municipalities.sql')
-    await load_inserts('src/scripts/property_areas.sql')
+    await load_inserts('src/scripts/db_location_seed/SdHt_property_prefectures.sql')
+    await load_inserts('src/scripts/db_location_seed/SdHt_property_municipalities.sql')
+    await load_inserts('src/scripts/db_location_seed/property_areas.sql')
 
 if __name__ == "__main__":
     asyncio.run(main())
