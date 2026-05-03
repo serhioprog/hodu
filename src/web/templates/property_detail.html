@@ -2,60 +2,68 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>{{ prop.category }} in {{ prop.calc_municipality or prop.area }} | hodu.</title>
+    <title>{{ prop.category or 'Property' }} in {{ prop.calc_municipality or prop.area or 'Halkidiki' }} | hodu.</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.css" />
-    
+
     <style>
         body { font-family: -apple-system, sans-serif; color: #222; padding-bottom: 100px; }
-        
-        /* Navbar (как на dashboard) */
         .navbar { background: white; border-bottom: 1px solid #eee; padding: 15px 0; margin-bottom: 30px; }
         .logo { color: #ff385c; font-weight: 800; font-size: 24px; letter-spacing: -1px; text-decoration: none; }
-        
+
         .header-title { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
-        .header-meta { font-size: 16px; color: #555; font-weight: 500; margin-bottom: 20px; }
-        
-        .swiper { 
-            width: 100%; height: 500px; border-radius: 12px; margin-bottom: 32px; background: #f7f7f7; 
-            --swiper-navigation-color: #ffffff;
-            --swiper-pagination-color: #ffffff;
-        }
+        .header-meta  { font-size: 16px; color: #555; font-weight: 500; margin-bottom: 20px; }
+
+        .swiper { width: 100%; height: 500px; border-radius: 12px; margin-bottom: 32px; background: #f7f7f7;
+                  --swiper-navigation-color: #ffffff; --swiper-pagination-color: #ffffff; }
         .swiper-slide img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; transition: opacity 0.2s; }
         .swiper-slide img:hover { opacity: 0.9; }
-        
-        .feature-box { border: 1px solid #eee; padding: 10px 16px; border-radius: 8px; background: #fafafa; height: 100%; }
+
+        .feature-box   { border: 1px solid #eee; padding: 10px 16px; border-radius: 8px; background: #fafafa; height: 100%; }
         .feature-label { font-size: 12px; color: #888; text-transform: uppercase; font-weight: 700; margin-bottom: 2px; letter-spacing: 0.5px; }
-        .feature-val { font-size: 17px; font-weight: 600; color: #222; }
-        
+        .feature-val   { font-size: 17px; font-weight: 600; color: #222; }
+
         .price-box { border: 1px solid #ebebeb; border-radius: 12px; padding: 24px; box-shadow: 0 6px 16px rgba(0,0,0,0.12); position: sticky; top: 30px; }
         .sidebar-price { font-size: 26px; font-weight: 800; margin-bottom: 10px; }
         .old-price-large { text-decoration: line-through; color: #717171; font-size: 16px; }
-        
+
         .desc-title { font-size: 20px; font-weight: 700; color: #111; margin-top: 30px; margin-bottom: 12px; }
+
+        .logo { 
+            display: flex; 
+            align-items: center; 
+            text-decoration: none; 
+        }
+        .logo img { 
+            height: 44px; /* Высота логотипа. Можешь сделать 35px или 45px, если нужно больше/меньше */
+            width: auto; 
+            object-fit: contain; 
+        }
+
     </style>
 </head>
 <body>
 
 <nav class="navbar">
     <div class="container d-flex justify-content-between align-items-center">
-        <a href="/daily-report" class="logo">hodu.</a>
-        <a href="/daily-report" class="btn btn-outline-dark btn-sm fw-bold px-3">← Back to Dashboard</a>
+        <a href="/daily-report" class="logo">
+            <img src="/static/hodu_logo.png" alt="hodu.">
+        </a>
     </div>
 </nav>
 
 <div class="container">
     <div class="d-flex justify-content-between align-items-end mb-3">
         <div>
-            <h1 class="header-title">{{ prop.category }}</h1>
-            
+            <h1 class="header-title">{{ prop.category or 'Property' }}</h1>
+
             <div class="header-meta">
                 {% set loc_parts = [] %}
-                {% if prop.calc_prefecture %}{% set _ = loc_parts.append(prop.calc_prefecture) %}{% endif %}
+                {% if prop.calc_prefecture   %}{% set _ = loc_parts.append(prop.calc_prefecture)   %}{% endif %}
                 {% if prop.calc_municipality %}{% set _ = loc_parts.append(prop.calc_municipality) %}{% endif %}
-                {% if prop.calc_area %}{% set _ = loc_parts.append(prop.calc_area) %}{% endif %}
-                
+                {% if prop.calc_area         %}{% set _ = loc_parts.append(prop.calc_area)         %}{% endif %}
+
                 {% if loc_parts|length > 0 %}
                     {{ loc_parts | join(', ') }}
                 {% else %}
@@ -63,14 +71,15 @@
                 {% endif %}
             </div>
         </div>
-        
+
         {% if current_user and current_user.is_admin %}
         <div class="text-end mb-2">
-            <span class="badge bg-light text-dark border p-2 px-3" style="font-size: 15px;">hodu ID: {{ (prop.id | string)[:6] | upper }}</span>
+            <span class="badge bg-light text-dark border p-2 px-3" style="font-size:15px;">hodu ID: {{ (prop.id | string)[:6] | upper }}</span>
         </div>
         {% endif %}
     </div>
 
+    {% if prop.media and prop.media|length > 0 %}
     <div class="swiper">
         <div class="swiper-wrapper">
             {% for m in prop.media %}
@@ -85,6 +94,7 @@
         <div class="swiper-button-next"></div>
         <div class="swiper-button-prev"></div>
     </div>
+    {% endif %}
 
     <div class="row">
         <div class="col-lg-8">
@@ -98,44 +108,67 @@
                 <div class="col-6 col-md-4">
                     <div class="feature-box">
                         <div class="feature-label">Land Size</div>
-                        <div class="feature-val">{% if prop.land_sqm %}{{ prop.land_sqm|int }} m²{% else %}—{% endif %}</div>
+                        <div class="feature-val">{% if prop.land_size_sqm %}{{ prop.land_size_sqm|int }} m²{% else %}—{% endif %}</div>
                     </div>
                 </div>
                 <div class="col-6 col-md-4">
                     <div class="feature-box">
                         <div class="feature-label">Bedrooms</div>
-                        <div class="feature-val">{% if prop.bedrooms %}{{ prop.bedrooms }}{% else %}—{% endif %}</div>
+                        <div class="feature-val">{{ prop.bedrooms or '—' }}</div>
                     </div>
                 </div>
                 <div class="col-6 col-md-4">
                     <div class="feature-box">
                         <div class="feature-label">Bathrooms</div>
-                        <div class="feature-val">{% if prop.bathrooms %}{{ prop.bathrooms }}{% else %}—{% endif %}</div>
+                        <div class="feature-val">{{ prop.bathrooms or '—' }}</div>
                     </div>
                 </div>
                 <div class="col-6 col-md-4">
                     <div class="feature-box">
                         <div class="feature-label">Levels</div>
-                        <div class="feature-val">{% if prop.levels %}{{ prop.levels }}{% else %}—{% endif %}</div>
+                        <div class="feature-val">{{ prop.levels or '—' }}</div>
                     </div>
                 </div>
                 <div class="col-6 col-md-4">
                     <div class="feature-box">
                         <div class="feature-label">Year Built</div>
-                        <div class="feature-val">{% if prop.year_built %}{{ prop.year_built }}{% else %}—{% endif %}</div>
+                        <div class="feature-val">{{ prop.year_built or '—' }}</div>
                     </div>
                 </div>
             </div>
-            
+
             {% if prop.extra_features %}
             <div class="mb-4">
                 <div class="feature-box">
                     <div class="feature-label">Extra Features</div>
-                    <div class="feature-val" style="font-size: 15px; font-weight: 500; line-height: 1.5; color: #444;">
+                    <div class="feature-val" style="font-size:15px;font-weight:500;line-height:1.5;color:#444;">
                         {% if prop.extra_features is mapping %}
+                            {# Split features into 'boolean' (just a flag) and 'valued'
+                            (key + concrete value). The two have very different visual
+                            density: bools are short labels, valued ones need their
+                            value shown to be useful (Energy Class: D, Distance: 25m). #}
+                            {% set bool_feats = [] %}
+                            {% set value_feats = [] %}
                             {% for key, val in prop.extra_features.items() %}
-                                {% if key != 'raw_features' %}<strong>{{ key }}:</strong>{% endif %} {{ val }}{% if not loop.last %} <span class="text-muted mx-2">|</span> {% endif %}
+                                {% if key == 'raw_features' or val is none or val == '' %}
+                                    {# skip empty/internal keys #}
+                                {% elif val is sameas true %}
+                                    {% set _ = bool_feats.append(key.replace('_', ' ').title()) %}
+                                {% elif val is sameas false %}
+                                    {# skip explicit-False booleans (e.g. double_glazing: false) — clutter #}
+                                {% else %}
+                                    {% set label = key.replace('_', ' ').title() %}
+                                    {% set _ = value_feats.append(label ~ ': ' ~ val) %}
+                                {% endif %}
                             {% endfor %}
+
+                            {% if value_feats %}
+                                <div style="margin-bottom:8px;">{{ value_feats | join(' • ') }}</div>
+                            {% endif %}
+                            {% if bool_feats %}
+                                <div>{{ bool_feats | join(' • ') }}</div>
+                            {% endif %}
+                            {% if not value_feats and not bool_feats %}—{% endif %}
                         {% else %}
                             {{ prop.extra_features }}
                         {% endif %}
@@ -143,44 +176,93 @@
                 </div>
             </div>
             {% endif %}
-            
+
             <h3 class="desc-title">Description</h3>
-            <div class="description" style="white-space: pre-line; line-height: 1.6; font-size: 16px;">
-                {{ prop.description }}
+            <div class="description" style="white-space:pre-line;line-height:1.6;font-size:16px;">
+                {{ prop.description or '' }}
             </div>
         </div>
 
         <div class="col-lg-4">
             <div class="price-box mt-4 mt-lg-0">
+                {% set st = prop.status.value if prop.status.value is defined else prop.status %}
                 <div class="mb-2">
-                    {% if prop.status == 'NEW' %}
+                    {% if st == 'NEW' %}
                         <span class="badge bg-success">New Listing</span>
-                    {% elif prop.status == 'PRICE_CHANGED' %}
+                    {% elif st == 'PRICE_CHANGED' %}
                         <span class="badge bg-danger">Price Drop</span>
                     {% endif %}
                 </div>
 
-                {% if prop.status == 'PRICE_CHANGED' and prop.previous_price %}
-                    <div class="old-price-large">{{ "{:,.0f}".format(prop.previous_price).replace(',', ' ') }} €</div>
+                {% if st == 'PRICE_CHANGED' and prop.previous_price %}
+                    <div class="old-price-large">{{ prop.previous_price | euro }}</div>
                 {% endif %}
-                
-                <div class="sidebar-price">{{ "{:,.0f}".format(prop.price).replace(',', ' ') }} €</div>
-                
+
+                <div class="sidebar-price">{{ prop.price | euro }}</div>
+
                 {% if current_user and current_user.is_admin %}
                     <div class="mb-4 small text-muted">
                         <div class="mb-1">Source: <span class="fw-bold text-dark">{{ prop.source_domain }}</span></div>
                         <div class="mb-1">Source ID: <span class="fw-bold text-dark">{{ prop.site_property_id }}</span></div>
-                        
+
                         {% if prop.site_last_updated %}
-                        <div class="mb-1">Site Updated: <span class="fw-bold text-dark">{{ prop.site_last_updated }}</span></div>
+                        <div class="mb-1">Site Updated: <span class="fw-bold text-dark">{{ prop.site_last_updated | local_dt }}</span></div>
                         {% endif %}
-                        
-                        <div>Last Scraped: <span class="fw-bold text-dark">{{ prop.last_checked_at.strftime('%d.%m.%Y %H:%M') if prop.last_checked_at else '—' }}</span></div>
+
+                        <div>Last Scraped: <span class="fw-bold text-dark">{{ prop.last_checked_at | local_dt }}</span></div>
                     </div>
-                    <a href="{{ prop.url }}" target="_blank" class="btn btn-danger w-100 py-3 fw-bold" style="background-color: #ff385c; border: none; font-size: 16px;">View on Website</a>
+                    <a href="{{ prop.url }}" target="_blank" class="btn btn-danger w-100 py-3 fw-bold" style="background-color:#ff385c;border:none;font-size:16px;">View on website</a>
                 {% endif %}
-                
             </div>
+
+            {# === Price History (admin only) ============================== #}
+            {# Shows every price change recorded for this property in reverse
+               chronological order. Each row: old → new with a coloured delta
+               (red for ▲ increase, green for ▼ decrease) and timestamp.
+               Hidden if there's no history (avoids an empty box on listings
+               we've only seen at one price). #}
+            {% if current_user and current_user.is_admin and prop.price_history %}
+                {% set sorted_history = prop.price_history | sort(attribute='changed_at', reverse=True) %}
+                {% if sorted_history|length > 0 %}
+                <div style="border:1px solid #ebebeb;border-radius:12px;padding:12px 16px;margin-top:16px;background:#fafafa;">
+                    <div style="font-size:12px;color:#888;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">
+                        Price History
+                    </div>
+
+                    <div style="font-size:13px;line-height:1.5;">
+                        {% for change in sorted_history %}
+                        <div style="padding:4px 0;{% if not loop.last %}border-bottom:1px solid #eee;{% endif %}">
+                            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;">
+                                <div>
+                                    {% if change.old_price %}
+                                        <span style="text-decoration:line-through;color:#999;">{{ change.old_price | euro }}</span>
+                                        <span style="color:#444;margin:0 4px;">→</span>
+                                        <span style="font-weight:600;color:#222;">{{ change.new_price | euro }}</span>
+                                        {% set diff = change.new_price - change.old_price %}
+                                        {% if diff < 0 %}
+                                            <span style="color:#22a565;font-size:11px;font-weight:700;margin-left:4px;">▼ {{ ((diff / change.old_price) * 100) | abs | round(1) }}%</span>
+                                        {% elif diff > 0 %}
+                                            <span style="color:#d4453c;font-size:11px;font-weight:700;margin-left:4px;">▲ {{ ((diff / change.old_price) * 100) | round(1) }}%</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span style="color:#666;font-size:12px;">Initial:</span>
+                                        <span style="font-weight:600;color:#222;">{{ change.new_price | euro }}</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div style="color:#999;font-size:11px;margin-top:0px;">
+                                {{ change.changed_at | local_dt }}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <div style="font-size:11px;color:#999;margin-top:4px;font-style:italic;">
+                        {{ sorted_history | length }} change{{ 's' if sorted_history|length != 1 else '' }} recorded
+                    </div>
+                </div>
+                {% endif %}
+            {% endif %}
         </div>
     </div>
 </div>
@@ -188,8 +270,8 @@
 <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.umd.js"></script>
 <script>
-    new Swiper('.swiper', { 
-        loop: true, 
+    new Swiper('.swiper', {
+        loop: true,
         pagination: { el: '.swiper-pagination', clickable: true },
         navigation: { nextEl: '.swiper-button-next', prevEl: '.swiper-button-prev' }
     });

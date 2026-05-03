@@ -2,79 +2,195 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>hodu Administration Panel</title>
+    <title>hodu. | Administration Panel</title>
+
+    <!-- Умный авто-рефреш: если есть запущенные скраперы, обновляем страницу раз в 5 секунд -->
+    {% set is_running = false %}
+    {% for log in scraper_logs %}
+        {% if log.status == 'RUNNING' %}
+            {% set is_running = true %}
+        {% endif %}
+    {% endfor %}
+    
+    {% if is_running %}
+        <meta http-equiv="refresh" content="5">
+    {% endif %}
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
-    
+
     <style>
         body { background: #f7f7f7; font-family: -apple-system, sans-serif; color: #222; }
         .nav-admin { background: white; border-bottom: 1px solid #eee; padding: 15px 0; }
-        .logo { color: #ff385c; font-weight: 800; font-size: 24px; letter-spacing: -1px; text-decoration: none; }
+
+        .logo { 
+            display: flex; 
+            align-items: center; 
+            text-decoration: none; 
+        }
+        .logo img { 
+            height: 44px; /* Высота логотипа. Можешь сделать 35px или 45px, если нужно больше/меньше */
+            width: auto; 
+            object-fit: contain; 
+        }
+
         .main-card { background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); padding: 25px; margin-top: 30px; margin-bottom: 50px; }
-        
-        /* 🍔 Burger Menu */
-        .menu-btn { width: 44px; height: 44px; border-radius: 50%; background: #fff; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; color: #555; transition: all 0.2s; cursor: pointer; }
+
+        .menu-btn { width: 44px; height: 44px; border-radius: 50%; background: #fff; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; color: #555; cursor: pointer; }
         .menu-btn:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); color: #222; }
         .dropdown-menu-custom { border-radius: 12px; border: 1px solid #ebebeb; box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 10px 0; min-width: 220px; margin-top: 10px !important; }
-        .dropdown-menu-custom .dropdown-item { padding: 10px 20px; font-weight: 500; color: #222; transition: background 0.2s; }
+        .dropdown-menu-custom .dropdown-item { padding: 10px 20px; font-weight: 500; color: #222; }
         .dropdown-menu-custom .dropdown-item:hover { background-color: #f7f7f7; }
         .dropdown-divider { margin: 8px 0; border-color: #ebebeb; }
 
-        /* Tabs */
         .nav-tabs .nav-link { color: #555; font-weight: 600; border: none; border-bottom: 3px solid transparent; margin-bottom: -1px; }
         .nav-tabs .nav-link.active { color: #ff385c; background: none; border-color: #ff385c; }
         .nav-tabs .nav-link:hover { border-color: #ff385c; color: #ff385c; }
-        
-        /* Tables */
+
         .table-custom { font-size: 14px; vertical-align: middle; border-collapse: separate; border-spacing: 0; width: 100%; }
         .table-custom th { text-transform: uppercase; font-size: 12px; color: #888; border-bottom: 2px solid #eee !important; padding-bottom: 10px; }
         .table-custom td { border-bottom: 1px solid #eee; padding: 12px 8px; }
-        
-        /* Clickable Rows */
+
         .clickable-row { cursor: pointer; }
-        .clickable-row td { transition: background-color 0.15s ease-in-out; }
         .clickable-row:hover td { background-color: #e2e6ea !important; }
-        
-        /* Thumbnails */
+
         .admin-thumb { width: 60px; height: 45px; object-fit: cover; border-radius: 6px; background-color: #e9ecef; }
         .admin-thumb-empty { width: 60px; height: 45px; border-radius: 6px; background-color: #e9ecef; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #adb5bd; }
 
-        /* Badges */
-        .badge-new { background: #e6f4ea; color: #1e7e34; font-weight: 700; border: 1px solid #cce8d6; }
-        .badge-price { background: #fce8e6; color: #d93025; font-weight: 700; border: 1px solid #fad2cf; }
-        .badge-delisted { background: #f1f3f4; color: #3c4043; font-weight: 700; border: 1px solid #dadce0; }
-        .badge-active { background: #fff; color: #5f6368; font-weight: 600; border: 1px solid #dadce0; }
-        
-        /* Filters */
+        .badge-new      { background: #E0F2FE; color: #0284c7; font-weight: 700; border: none; padding: 5px 10px; border-radius: 6px; }
+        .badge-price    { background: #FEE2E2; color: #DC2626; font-weight: 700; border: none; padding: 5px 10px; border-radius: 6px; }
+        .badge-delisted { background: #F3F4F6; color: #4B5563; font-weight: 700; border: none; padding: 5px 10px; border-radius: 6px; }
+        .badge-active   { background: #DCFCE7; color: #059669; font-weight: 700; border: none; padding: 5px 10px; border-radius: 6px; }
+
         .filter-panel { background: #fff; padding: 18px 20px 6px 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.03); border: 1px solid #ebebeb; }
         .filter-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #888; font-weight: 700; margin-bottom: 6px; display: block; }
         .price-dash { background: transparent; border-left: none; border-right: none; color: #888; padding: 0 8px; display: flex; align-items: center; }
-        
-        /* Пагинация */
+
         .dataTables_wrapper .pagination { gap: 8px; justify-content: flex-end; margin-top: 10px; }
-        .dataTables_wrapper .page-item .page-link { border: none !important; border-bottom: 3px solid transparent !important; border-radius: 0 !important; color: #555; font-size: 15px; font-weight: 600; padding: 8px 12px; background-color: transparent !important; transition: all 0.2s ease; margin-left: 0; }
-        .dataTables_wrapper .page-item.active .page-link { color: #ff385c !important; border-bottom-color: #ff385c !important; box-shadow: none !important; background-color: transparent !important; }
-        .dataTables_wrapper .page-item .page-link:hover { color: #ff385c !important; border-bottom-color: #ff385c !important; background-color: transparent !important; }
-        .dataTables_wrapper .page-item.disabled .page-link { color: #bbb !important; border-bottom-color: transparent !important; }
+        .dataTables_wrapper .page-item .page-link { border: none !important; border-bottom: 3px solid transparent !important; border-radius: 0 !important; color: #555; font-weight: 600; padding: 8px 12px; background-color: transparent !important; }
+        .dataTables_wrapper .page-item.active .page-link { color: #ff385c !important; border-bottom-color: #ff385c !important; }
+        .dataTables_wrapper .page-item .page-link:hover { color: #ff385c !important; border-bottom-color: #ff385c !important; }
         .dataTables_info { padding-top: 1rem !important; font-weight: 500; }
+
+        .cluster-card { border: 1px solid #e2e6ea; border-radius: 12px; overflow: hidden; margin-bottom: 20px; }
+        .cluster-header { background: #fff; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 15px 20px; }
+        
+        .main-card, .filter-panel, .price-box, .cluster-card, .modal-content {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02) !important;
+            border: 1px solid #f3f4f6 !important; /* Делаем рамки тоньше и нежнее */
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 56, 92, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(255, 56, 92, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 56, 92, 0); }
+        }
+    
+                /* Убираем синюю обводку (glow) при фокусе на input и select */
+        .form-control:focus, 
+        .form-select:focus {
+            border-color: #d1d5db; /* Светло-серый цвет, как у обычных рамок */
+            box-shadow: 0 0 0 0.2rem rgba(108, 117, 125, 0.15); /* Мягкое серое свечение вместо синего */
+        }
+
+        /* Стилизация выпадающих списков*/
+        select option:hover,
+        select option:focus,
+        select option:active,
+        select option:checked {
+            background: linear-gradient(#f8f9fa, #f8f9fa);
+            background-color: #f8f9fa !important; /* Светло-серый фон при наведении/выборе */
+            color: #212529 !important; /* Темно-серый текст */
+        }
+
+        /* --- Soft Hover Buttons --- */
+        .btn-soft-success {
+            color: #059669;
+            background-color: transparent; /* Прозрачный фон в покое */
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            transition: background-color 0.2s ease;
+        }
+        .btn-soft-success:hover {
+            background-color: #DCFCE7; /* Нежно-зеленый при наведении */
+        }
+
+        .btn-soft-danger {
+            color: #ff385c;
+            background-color: transparent; /* Прозрачный фон в покое */
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            transition: background-color 0.2s ease;
+        }
+        .btn-soft-danger:hover {
+            background-color: #fff0f2; /* Нежно-красный при наведении */
+        }
+
+        /* Основная кнопка hodu----------------------------------------------------------------------- */
+        .btn-hodu-main {
+            background-color: #ff385c !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 8px !important;
+            transition: box-shadow 0.3s ease, transform 0.1s ease !important; 
+        }
+
+        .btn-hodu-main:hover {
+            background-color: #ff385c !important; 
+            /* Ускорили до 1.2s и поменяли название анимации */
+            animation: softPulseInward 1.2s infinite ease-in-out;
+            box-shadow: 0 10px 20px -5px rgba(255, 56, 92, 0.4) !important; 
+        }
+
+        .btn-hodu-main:active {
+            animation: none; 
+            /* При клике кнопка проваливается чуть глубже пульсации */
+            transform: scale(0.94) !important; 
+            box-shadow: 0 5px 10px -3px rgba(255, 56, 92, 0.3) !important;
+        }
+
+        /* Анимация пульсации внутрь (за счет уменьшения) */
+        @keyframes softPulseInward {
+            0% { transform: scale(1); }
+            50% { transform: scale(0.97); } /* Уменьшается на 3% */
+            100% { transform: scale(1); }
+        }
+        /* Основная кнопка hodu----------------------------------------------------------------------- */
+
+        /* Бейджи в Scrapers / Email ----------------------------------------------------------------------- */
+        /* --- Системные бейджи (Scrapers & Email) --- */
+        .badge-sys-success { background: #DCFCE7; color: #059669; font-weight: 700; border: none; padding: 5px 10px; border-radius: 6px; }
+        .badge-sys-error   { background: #FEE2E2; color: #DC2626; font-weight: 700; border: none; padding: 5px 10px; border-radius: 6px; }
+        .badge-sys-running { background: #DBEAFE; color: #0284c7; font-weight: 700; border: none; padding: 5px 10px; border-radius: 6px; }
+        .badge-sys-neutral { background: #F3F4F6; color: #4B5563; font-weight: 700; border: none; padding: 5px 10px; border-radius: 6px; }
+        /* Бейджи в Scrapers / Email ----------------------------------------------------------------------- */
+    
     </style>
 </head>
 <body>
 
 <nav class="nav-admin">
     <div class="container d-flex justify-content-between align-items-center">
-        <a href="/daily-report" class="logo">hodu.</a>
-        
+        <a href="/admin" class="logo">
+            <img src="/static/hodu_logo.png" alt="hodu.">
+        </a>
+
         <div class="dropdown">
             <button class="menu-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
             <ul class="dropdown-menu dropdown-menu-end dropdown-menu-custom">
                 <li><a class="dropdown-item" href="/daily-report">Dashboard</a></li>
-                {% if current_user and current_user.is_admin %}
-                <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item" href="/admin">Control Panel</a></li>
-                {% endif %}
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <form action="/logout" method="post" class="m-0">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="dropdown-item" style="background:none;border:none;width:100%;text-align:left;">Sign out</button>
+                    </form>
+                </li>
             </ul>
         </div>
     </div>
@@ -83,72 +199,92 @@
 <div class="container">
     <div class="main-card">
         <ul class="nav nav-tabs mb-4" id="adminTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-properties" type="button">Properties</button>
+            <li class="nav-item">
+                <button class="nav-link active d-flex align-items-center" data-bs-toggle="tab" data-bs-target="#tab-properties" type="button">
+                    <svg class="me-2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                    Properties
+                </button>
             </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-users" type="button">Users Management</button>
+            <li class="nav-item">
+                <button class="nav-link d-flex align-items-center" data-bs-toggle="tab" data-bs-target="#tab-clusters" type="button">
+                    <svg class="me-2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    Duplicates
+                    <span style="position: relative; display: inline-block;">
+                        {% if pending_clusters|length > 0 %}
+                            <span class="position-absolute bg-danger rounded-circle" style="width: 6px; height: 6px; top: -2px; right: -8px; animation: pulse 2s infinite;"></span>
+                        {% endif %}
+                    </span>
+                </button>
             </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-settings" type="button">System Settings</button>
+            <li class="nav-item">
+                <button class="nav-link d-flex align-items-center" data-bs-toggle="tab" data-bs-target="#tab-users" type="button">
+                    <svg class="me-2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    Users
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link d-flex align-items-center" data-bs-toggle="tab" data-bs-target="#tab-settings" type="button">
+                    <svg class="me-2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    System
+                </button>
             </li>
         </ul>
 
         <div class="tab-content" id="adminTabsContent">
-            
+
+            <!-- ==================== PROPERTIES ==================== -->
             <div class="tab-pane fade show active" id="tab-properties">
-                
                 <div class="filter-panel">
-                    <div class="row align-items-end g-3">
-                        
-                        <div class="col-md-1 mb-3">
-                            <label class="filter-label">SHOW</label>
-                            <select id="customLength" class="form-select form-select-sm">
+                    <div class="row align-items-end g-2">
+                        <div class="col-auto mb-3">
+                            <label class="filter-label">Show</label>
+                            <select id="customLength" class="form-select form-select-sm" style="width: 70px;">
                                 <option value="10">10</option>
                                 <option value="25" selected>25</option>
                                 <option value="50">50</option>
                                 <option value="100">100</option>
                             </select>
                         </div>
-
-                        <div class="col-md-3 mb-3">
-                            <label class="filter-label">SEARCH</label>
-                            <input type="text" id="customSearch" class="form-control form-control-sm" placeholder="Search anything...">
+                        
+                        <div class="col mb-3">
+                            <label class="filter-label">Source</label>
+                            <select id="filterSource" class="form-select form-select-sm"><option value="">All sites</option></select>
                         </div>
-
-                        <div class="col-md-2 mb-3">
-                            <label class="filter-label">AREA</label>
-                            <select id="filterArea" class="form-select form-select-sm">
-                                <option value="">All areas</option>
-                            </select>
+                        
+                        <div class="col mb-3">
+                            <label class="filter-label">Search</label>
+                            <input type="text" id="customSearch" class="form-control form-control-sm" placeholder="Search...">
                         </div>
-
-                        <div class="col-md-2 mb-3">
-                            <label class="filter-label">TYPE</label>
-                            <select id="filterType" class="form-select form-select-sm">
-                                <option value="">All types</option>
-                            </select>
+                        
+                        <div class="col mb-3">
+                            <label class="filter-label">Area</label>
+                            <select id="filterArea" class="form-select form-select-sm"><option value="">All areas</option></select>
                         </div>
-
-                        <div class="col-md-3 mb-3">
-                            <label class="filter-label">PRICE (€)</label>
-                            <div class="input-group input-group-sm">
+                        
+                        <div class="col mb-3">
+                            <label class="filter-label">Type</label>
+                            <select id="filterType" class="form-select form-select-sm"><option value="">All types</option></select>
+                        </div>
+                        
+                        <div class="col-auto mb-3">
+                            <label class="filter-label">Price (€)</label>
+                            <div class="input-group input-group-sm" style="width: 190px;">
                                 <input type="number" id="filterPriceMin" class="form-control" placeholder="Min" min="0">
-                                <span class="input-group-text price-dash">-</span>
+                                <span class="input-group-text price-dash" style="padding: 0 4px;">-</span>
                                 <input type="number" id="filterPriceMax" class="form-control" placeholder="Max" min="0">
                             </div>
                         </div>
-
-                        <div class="col-md-1 mb-3">
-                            <label class="filter-label">STATUS</label>
-                            <select id="filterStatus" class="form-select form-select-sm">
+                        
+                        <div class="col-auto mb-3">
+                            <label class="filter-label">Status</label>
+                            <select id="filterStatus" class="form-select form-select-sm" style="width: 90px;">
                                 <option value="">All</option>
                                 <option value="NEW">New</option>
                                 <option value="PRICE DROP">Drop</option>
                                 <option value="ACTIVE">Active</option>
+                                <option value="DELISTED">Delisted</option>
                             </select>
                         </div>
-
                     </div>
                 </div>
 
@@ -158,7 +294,8 @@
                             <tr>
                                 <th style="width: 60px;">Photo</th>
                                 <th>HODU ID</th>
-                                <th>SITE ID</th>
+                                <th>Site ID</th>
+                                <th>Source</th>
                                 <th>Area</th>
                                 <th>Type</th>
                                 <th>Size</th>
@@ -179,16 +316,18 @@
                                 </td>
                                 <td class="text-muted fw-bold">{{ (prop.id | string)[:6] | upper }}</td>
                                 <td class="fw-bold">{{ prop.site_property_id }}</td>
+                                <td>{{ prop.source_domain }}</td>
                                 <td>{{ prop.calc_municipality or prop.area or '—' }}</td>
-                                <td>{{ prop.category }}</td>
-                                <td>{{ prop.size_sqm|int }} m²</td>
-                                <td class="fw-bold text-nowrap" data-sort="{{ prop.price }}">{{ "{:,.0f}".format(prop.price).replace(',', ' ') }} €</td>
+                                <td>{{ prop.category or '—' }}</td>
+                                <td>{% if prop.size_sqm %}{{ prop.size_sqm|int }} m²{% else %}—{% endif %}</td>
+                                <td class="fw-bold text-nowrap" data-sort="{{ prop.price or 0 }}">{{ prop.price | euro }}</td>
                                 <td>
-                                    {% if prop.status == 'NEW' %}
+                                    {% set st = prop.status.value if prop.status.value is defined else prop.status %}
+                                    {% if st == 'NEW' %}
                                         <span class="badge badge-new">NEW</span>
-                                    {% elif prop.status == 'PRICE_CHANGED' %}
+                                    {% elif st == 'PRICE_CHANGED' %}
                                         <span class="badge badge-price">PRICE DROP</span>
-                                    {% elif not prop.is_active or prop.status == 'DELISTED' %}
+                                    {% elif not prop.is_active or st == 'DELISTED' %}
                                         <span class="badge badge-delisted">DELISTED</span>
                                     {% else %}
                                         <span class="badge badge-active">ACTIVE</span>
@@ -204,10 +343,63 @@
                 </div>
             </div>
 
+            <!-- ==================== DUPLICATES AI ==================== -->
+            <div class="tab-pane fade" id="tab-clusters">
+
+                <!-- Внутренние табы: Pending / Approved (стилизованные как главные) -->
+                <ul class="nav nav-tabs mb-4" id="clusterSubTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="pills-pending-tab" data-bs-toggle="tab" data-bs-target="#pills-pending" type="button" role="tab">
+                            Pending review<sup id="pending-count" class="ms-1" style="color: #ff385c; font-weight: 500; font-size: 0.75em;">{{ pending_clusters|length }}</sup>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="pills-approved-tab" data-bs-toggle="tab" data-bs-target="#pills-approved" type="button" role="tab">
+                            Approved<sup id="approved-count" class="ms-1" style="color: #888; font-weight: 400; font-size: 0.75em;">{{ approved_clusters|length }}</sup>
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="pills-tabContent">
+                    
+                    <!-- Вкладка PENDING -->
+                    <div class="tab-pane fade show active" id="pills-pending" role="tabpanel">
+                        <div id="pending-clusters-container">
+                            {% if pending_clusters %}
+                                {% for cluster in pending_clusters %}
+                                    {% include 'partials/cluster_card.html' %} <!-- Сюда вынесем карточку -->
+                                {% endfor %}
+                            {% else %}
+                                <div class="text-center py-5 text-muted empty-state">
+                                    <h5>No pending duplicates</h5><p>The AI hasn't flagged anything for review yet.</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Вкладка APPROVED -->
+                    <div class="tab-pane fade" id="pills-approved" role="tabpanel">
+                        <div id="approved-clusters-container">
+                            {% if approved_clusters %}
+                                {% for cluster in approved_clusters %}
+                                    {% include 'partials/cluster_card.html' %}
+                                {% endfor %}
+                            {% else %}
+                                <div class="text-center py-5 text-muted empty-state">
+                                    <h5>No approved clusters</h5><p>You haven't approved any master records yet.</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- ==================== USERS ==================== -->
             <div class="tab-pane fade" id="tab-users">
                 <div class="d-flex justify-content-between align-items-center mb-4">
                     <h5 class="mb-0">Agents & Users</h5>
-                    <button class="btn btn-dark btn-sm fw-bold">+ Add New Agent</button>
+                    <button class="btn btn-dark btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#addAgentModal">+ Add New Agent</button>
                 </div>
                 <table class="table table-hover table-custom">
                     <thead>
@@ -227,15 +419,16 @@
                             </td>
                             <td>
                                 {% if user.is_active %}
-                                    <span class="badge badge-new">Active</span>
+                                    <span class="badge badge-active">Active</span>
                                 {% else %}
                                     <span class="badge badge-price">Blocked</span>
                                 {% endif %}
                             </td>
-                            <td>{% if user.is_admin %} Administrator {% else %} Agent {% endif %}</td>
+                            <td>{% if user.is_admin %}Administrator{% else %}Agent{% endif %}</td>
                             <td class="text-end">
                                 {% if user.id != current_user.id %}
                                 <form action="/admin/users/{{ user.id }}/toggle" method="post">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <button class="btn btn-sm btn-outline-dark fw-bold">
                                         {{ "Block" if user.is_active else "Unblock" }}
                                     </button>
@@ -248,25 +441,207 @@
                 </table>
             </div>
 
+            <!-- ==================== SETTINGS ==================== -->
             <div class="tab-pane fade" id="tab-settings">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h5 class="mb-4">Automation Settings</h5>
-                        <form action="/admin/settings/update" method="post">
-                            <div class="mb-4">
-                                <label class="form-label text-muted small fw-bold">SCRAPER START TIME (Sync)</label>
-                                <input type="time" name="sync_time" class="form-control" value="{{ sync_time }}">
+                
+                <!-- Внутренние табы -->
+                <ul class="nav nav-tabs mb-4" id="settingsSubTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="pills-cron-tab" data-bs-toggle="tab" data-bs-target="#pills-cron" type="button" role="tab">⏱️ Schedule</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="pills-scraper-tab" data-bs-toggle="tab" data-bs-target="#pills-scraper" type="button" role="tab">🕷️ Scrapers</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="pills-email-tab" data-bs-toggle="tab" data-bs-target="#pills-email" type="button" role="tab">✉️ Email</button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="settings-tabContent">
+                    
+                    <!-- Вкладка CRON -->
+                    <div class="tab-pane fade show active" id="pills-cron" role="tabpanel">
+                        <div class="row">
+                            <div class="col-md-5">
+                                <div class="filter-panel p-4">
+                                    <h6 class="fw-bold mb-3">Cron Automation Scheduler</h6>
+                                    <form action="/admin/settings/update" method="post">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <div class="mb-4">
+                                            <label class="form-label text-muted small fw-bold">Scraper start time (sync)</label>
+                                            <input type="time" name="sync_time" class="form-control bg-light" value="{{ sync_time }}">
+                                            <div class="form-text small">Time when bots start collecting new properties.</div>
+                                        </div>
+                                        <div class="mb-4">
+                                            <label class="form-label text-muted small fw-bold">Report delivery time (email)</label>
+                                            <input type="time" name="report_time" class="form-control bg-light" value="{{ report_time }}">
+                                            <div class="form-text small">Time when daily digest is sent to agents.</div>
+                                        </div>
+                                        <button type="submit" class="btn btn-hodu-main w-100 fw-bold shadow-sm">Save settings</button>
+                                    </form>
+                                </div>
                             </div>
-                            <div class="mb-4">
-                                <label class="form-label text-muted small fw-bold">REPORT DELIVERY TIME (Email)</label>
-                                <input type="time" name="report_time" class="form-control" value="{{ report_time }}">
-                            </div>
-                            <button type="submit" class="btn text-white w-100 fw-bold" style="background: #ff385c;">Save Settings</button>
-                        </form>
+                        </div>
                     </div>
+
+                    <!-- Вкладка SCRAPER LOGS -->
+                    <div class="tab-pane fade" id="pills-scraper" role="tabpanel">
+                        
+                        <!-- Новый нежно-розовый баннер -->
+                        <div class="filter-panel p-4 mb-4" style="background-color: #fff0f2; border: 1px solid #ffe6ea; border-radius: 12px;">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="fw-bold mb-1 text-dark">Manual Action: "Clarity in every grain"</h6>
+                                    <p class="text-muted small mb-0">Forced donor verification. Database update. Use the hodu. engine for targeted collection and processing of objects, and grouping of duplicates or similar.</p>
+                                </div>
+                                <button id="runScrapersBtn" class="btn btn-hodu-main shadow-sm fw-bold px-4" onclick="startScrapers()">
+                                    ▶ Run Scrapers Now
+                                </button>
+                            </div>
+                        </div>
+
+                        <h6 class="fw-bold mb-3 mt-4">Recent Scraper Executions</h6>
+                        
+                        <div class="table-responsive">
+                            <table class="table table-hover table-custom">
+                                <thead style="background:#fdfdfd;">
+                                    <tr>
+                                        <th>Date & Time</th>
+                                        <th>Source</th>
+                                        <th>Status</th>
+                                        <th>Processed</th>
+                                        <th>New</th>
+                                        <th>Duration</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for log in scraper_logs %}
+                                    <tr>
+                                        <td class="fw-bold text-muted">{{ log.created_at | local_dt if log.created_at else '—' }}</td>
+                                        <td class="fw-bold">{{ log.source_domain }}</td>
+                                        <td>
+                                            {% if log.status == 'SUCCESS' %}
+                                                <span class="badge badge-sys-success">Success</span>
+                                            {% elif log.status == 'RUNNING' %}
+                                                <span class="badge badge-sys-running" style="animation: pulse 2s infinite;">
+                                                    <span class="spinner-border spinner-border-sm" style="width: 10px; height: 10px; border-width: 2px;"></span> Running
+                                                </span>
+                                            {% elif log.status == 'ERROR' %}
+                                                <span class="badge badge-sys-error" title="{{ log.error_message }}">Error</span>
+                                            {% else %}
+                                                <span class="badge badge-sys-neutral">{{ log.status }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ log.processed_count }}</td>
+                                        <td><span class="text-success fw-bold">+{{ log.new_count }}</span></td>
+                                        <td class="text-muted">
+                                            {% if log.duration_seconds %}
+                                                {{ log.duration_seconds // 60 }}m {{ log.duration_seconds % 60 }}s
+                                            {% else %}—{% endif %}
+                                        </td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="6" class="text-center text-muted py-4">No scraper logs yet.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Вкладка EMAIL -->
+                    <div class="tab-pane fade" id="pills-email" role="tabpanel">
+                        <div class="filter-panel p-4 mb-4" style="background-color: #fff0f2; border: 1px solid #ffe6ea; border-radius: 12px;">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="fw-bold mb-1 text-dark">Manual Action: "Found, not sought"</h6>
+                                    <p class="text-muted small mb-0">Force generate the daily report based on current data and send it immediately to all active agents.</p>
+                                </div>
+                                <form action="/admin/email/send-test" method="post" class="m-0">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <button type="submit" class="btn btn-hodu-main shadow-sm fw-bold px-4">
+                                        ✉️ Send Report Now
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <h6 class="fw-bold mb-3 mt-4">Email Delivery History</h6>
+                        <div class="table-responsive">
+                            <table class="table table-hover table-custom">
+                                <thead style="background:#fdfdfd;">
+                                    <tr>
+                                        <th>Sent At</th>
+                                        <th>Recipient</th>
+                                        <th>Status</th>
+                                        <th>Properties Included</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for log in email_logs %}
+                                    <tr>
+                                        <td class="fw-bold text-muted">{{ log.created_at | local_dt if log.created_at else '—' }}</td>
+                                        <td class="fw-bold">{{ log.recipient_email }}</td>
+                                        <td>
+                                            {% if log.status == 'DELIVERED' %}
+                                                <span class="badge badge-sys-success">Delivered</span>
+                                            {% elif log.status == 'NO NEW DATA' %}
+                                                <span class="badge badge-sys-neutral">No New Data</span>
+                                            {% else %}
+                                                <span class="badge badge-sys-error">Failed</span>
+                                                {% if log.error_message %}
+                                                    <div class="small text-danger mt-1" style="font-size: 11px;">{{ log.error_message }}</div>
+                                                {% endif %}
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ log.properties_count }} items</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="4" class="text-center text-muted py-4">No emails sent yet.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                 </div>
             </div>
 
+        </div>
+    </div>
+</div>
+
+<!-- Add Agent Modal -->
+<div class="modal fade" id="addAgentModal" tabindex="-1" aria-labelledby="addAgentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius:16px;border:none;box-shadow:0 10px 30px rgba(0,0,0,0.1);">
+            <div class="modal-header" style="border-bottom:1px solid #f0f0f0;padding:20px 25px;">
+                <h5 class="modal-title fw-bold" id="addAgentModalLabel">New agent</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="/admin/users/add" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="modal-body" style="padding:25px;">
+                    <div class="mb-4">
+                        <label class="form-label text-muted small fw-bold text-uppercase">Full name</label>
+                        <input type="text" name="name" class="form-control form-control-lg shadow-none" placeholder="e.g. John Doe" required style="border-radius:10px;border:1px solid #ddd;font-size:16px;">
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label text-muted small fw-bold text-uppercase">Email</label>
+                        <input type="email" name="email" class="form-control form-control-lg shadow-none" placeholder="email@example.com" required style="border-radius:10px;border:1px solid #ddd;font-size:16px;">
+                    </div>
+                    <div class="form-check form-switch p-0 d-flex align-items-center justify-content-between">
+                        <div>
+                            <label class="form-check-label fw-bold" for="isAdminSwitch">Administrator rights</label>
+                            <div class="form-text small">Allow managing settings and users</div>
+                        </div>
+                        <input class="form-check-input shadow-none" type="checkbox" name="is_admin" id="isAdminSwitch" style="width:45px;height:24px;cursor:pointer;margin:0;">
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-top:1px solid #f0f0f0;padding:20px 25px;">
+                    <button type="button" class="btn btn-light fw-bold px-4" data-bs-dismiss="modal" style="border-radius:10px;">Cancel</button>
+                    <button type="submit" class="btn text-white fw-bold px-5" style="background:#ff385c;border-radius:10px;border:none;">Create</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -275,56 +650,227 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script>
+$(document).ready(function () {
+    $.fn.dataTable.ext.search.push(function (settings, data) {
+        if (settings.nTable.id !== 'propertiesTable') return true;
+        var min = parseInt($('#filterPriceMin').val(), 10);
+        var max = parseInt($('#filterPriceMax').val(), 10);
+        var price = parseFloat((data[6] || '').replace(/[^\d]/g, ''));
+        if ((isNaN(min) && isNaN(max)) ||
+            (isNaN(min) && price <= max) ||
+            (min <= price && isNaN(max)) ||
+            (min <= price && price <= max)) return true;
+        return false;
+    });
+
+    var table = $('#propertiesTable').DataTable({
+        dom: "<'row'<'col-sm-12'tr>><'row mt-3 align-items-center'<'col-sm-12 col-md-5 small text-muted'i><'col-sm-12 col-md-7 d-flex justify-content-end'p>>",
+        order: [[1, 'desc']],
+        pageLength: 25,
+        columnDefs: [{ orderable: false, targets: 0 }]
+    });
+
+    $('#customLength').on('change', function () { table.page.len($(this).val()).draw(); });
+    $('#customSearch').on('keyup', function () { table.search($(this).val()).draw(); });
+
+    // Заполняем фильтр Source (индекс 3)
+    table.column(3).data().unique().sort().each(function (d) {
+        var val = $('<div/>').html(d).text().trim();
+        if (val && val !== '—') $('#filterSource').append('<option value="' + val + '">' + val + '</option>');
+    });
+
+    // Заполняем фильтр Area (индекс 4)
+    table.column(4).data().unique().sort().each(function (d) {
+        var val = $('<div/>').html(d).text().trim();
+        if (val && val !== '—') $('#filterArea').append('<option value="' + val + '">' + val + '</option>');
+    });
+
+    // Заполняем фильтр Type (индекс 5)
+    table.column(5).data().unique().sort().each(function (d) {
+        var val = $('<div/>').html(d).text().trim();
+        if (val && val !== '—') $('#filterType').append('<option value="' + val + '">' + val + '</option>');
+    });
+
+    // Обработчики фильтров
+    $('#filterStatus').on('change', function () {
+        var val = $.fn.dataTable.util.escapeRegex($(this).val());
+        table.column(8).search(val || '', true, false).draw();
+    });
+
+    $('#filterSource').on('change', function () {
+        var val = $.fn.dataTable.util.escapeRegex($(this).val());
+        table.column(3).search(val ? '^' + val + '$' : '', true, false).draw(); // Индекс 3
+    });
+    $('#filterArea').on('change', function () {
+        var val = $.fn.dataTable.util.escapeRegex($(this).val());
+        table.column(4).search(val ? '^' + val + '$' : '', true, false).draw(); // Индекс 4
+    });
+    $('#filterType').on('change', function () {
+        var val = $.fn.dataTable.util.escapeRegex($(this).val());
+        table.column(5).search(val ? '^' + val + '$' : '', true, false).draw(); // Индекс 5
+    });
+    
+    $('#filterPriceMin, #filterPriceMax').on('keyup change', function () { table.draw(); });
+});
+</script>
 
 <script>
-    $(document).ready(function() {
-        
-        $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
-            if (settings.nTable.id !== 'propertiesTable') { return true; }
-            var min = parseInt($('#filterPriceMin').val(), 10);
-            var max = parseInt($('#filterPriceMax').val(), 10);
-            var price = parseFloat(data[6].replace(/[^\d]/g, ''));
-            if ( (isNaN(min) && isNaN(max)) || (isNaN(min) && price <= max) || (min <= price && isNaN(max)) || (min <= price && price <= max) ) { return true; }
-            return false;
-        });
+function removeProp(clusterId, propId, btn, event) {
+    // Останавливаем клик, чтобы не открывалась соседняя вкладка с виллой
+    event.stopPropagation(); 
 
-        var table = $('#propertiesTable').DataTable({
-            dom: "<'row'<'col-sm-12'tr>><'row mt-3 align-items-center'<'col-sm-12 col-md-5 small text-muted'i><'col-sm-12 col-md-7 d-flex justify-content-end'p>>",
-            order: [[ 1, 'desc' ]], 
-            pageLength: 25,
-            columnDefs: [{ orderable: false, targets: 0 }]
-        });
+    // Берем скрытый CSRF токен (он есть на странице)
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
 
-        $('#customLength').on('change', function() { table.page.len($(this).val()).draw(); });
-        $('#customSearch').on('keyup', function() { table.search($(this).val()).draw(); });
-
-        table.column(3).data().unique().sort().each(function (d, j) {
-            var val = $('<div/>').html(d).text().trim(); 
-            if (val && val !== '—') { $('#filterArea').append('<option value="' + val + '">' + val + '</option>'); }
-        });
-
-        table.column(4).data().unique().sort().each(function (d, j) {
-            var val = $('<div/>').html(d).text().trim(); 
-            if (val && val !== '—') { $('#filterType').append('<option value="' + val + '">' + val + '</option>'); }
-        });
-
-        $('#filterStatus').on('change', function () {
-            var val = $.fn.dataTable.util.escapeRegex($(this).val());
-            table.column(7).search(val ? val : '', true, false).draw();
-        });
-
-        $('#filterArea').on('change', function () {
-            var val = $.fn.dataTable.util.escapeRegex($(this).val());
-            table.column(3).search(val ? '^' + val + '$' : '', true, false).draw();
-        });
-
-        $('#filterType').on('change', function () {
-            var val = $.fn.dataTable.util.escapeRegex($(this).val());
-            table.column(4).search(val ? '^' + val + '$' : '', true, false).draw();
-        });
-
-        $('#filterPriceMin, #filterPriceMax').on('keyup change', function() { table.draw(); });
+    // Отправляем тихий фоновый запрос на сервер
+    fetch(`/admin/clusters/${clusterId}/remove/${propId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ 'csrf_token': csrfToken })
+    })
+    .then(response => {
+        if (response.ok) {
+            const row = btn.closest('tr');
+            const tbody = row.closest('tbody');
+            
+            // Визуальный эффект: строка плавно исчезает
+            row.style.transition = "opacity 0.3s";
+            row.style.opacity = '0';
+            
+            setTimeout(() => {
+                row.remove(); // Удаляем строку из HTML
+                
+                // Проверяем, сколько вилл осталось в кластере
+                const rowsLeft = tbody.querySelectorAll('tr').length;
+                const card = tbody.closest('.cluster-card');
+                
+                if (rowsLeft < 2) {
+                    // Если осталась 1 вилла, кластер бессмысленный — удаляем всю карточку
+                    card.style.transition = "opacity 0.3s";
+                    card.style.opacity = '0';
+                    setTimeout(() => card.remove(), 300);
+                } else {
+                    // Иначе просто обновляем счетчик "member(s)"
+                    const countBadge = card.querySelector('span.text-muted');
+                    if (countBadge) countBadge.innerText = rowsLeft + " member(s)";
+                }
+            }, 300);
+        } else {
+            alert('Ошибка при удалении объекта.');
+        }
     });
+}
+
+function handleClusterVerdict(clusterId, action, btn) {
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+    
+    fetch(`/admin/clusters/${clusterId}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ 'csrf_token': csrfToken })
+    })
+    .then(response => {
+        if (response.ok) {
+            const card = btn.closest('.cluster-card');
+            
+            if (action === 'approve') {
+                // Магия: переносим карточку в список подтвержденных!
+                const approvedContainer = document.getElementById('approved-clusters-container');
+                const actionsDiv = card.querySelector('.cluster-actions');
+                const badge = card.querySelector('.cluster-status-badge');
+                
+                // Прячем кнопки и меняем бейдж
+                if (actionsDiv) actionsDiv.style.display = 'none';
+                if (badge) {
+                    badge.className = 'badge bg-success text-white cluster-status-badge';
+                    badge.innerText = 'Approved';
+                }
+                
+                // Скрываем сообщения "Пусто" если они были
+                document.querySelectorAll('.empty-state').forEach(e => e.style.display = 'none');
+                
+                // Переносим карточку
+                card.style.opacity = '0';
+                setTimeout(() => {
+                    approvedContainer.prepend(card);
+                    card.style.opacity = '1';
+                    
+                    // Обновляем счетчики в табах
+                    document.getElementById('pending-count').innerText = parseInt(document.getElementById('pending-count').innerText) - 1;
+                    document.getElementById('approved-count').innerText = parseInt(document.getElementById('approved-count').innerText) + 1;
+                }, 300);
+
+            } else {
+                // Если Reject - просто удаляем с концами
+                card.style.transition = "opacity 0.3s";
+                card.style.opacity = '0';
+                setTimeout(() => {
+                    card.remove();
+                    document.getElementById('pending-count').innerText = parseInt(document.getElementById('pending-count').innerText) - 1;
+                }, 300);
+            }
+        } else {
+            alert('Ошибка при отправке решения.');
+        }
+    });
+}
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    // 1. Восстанавливаем главную вкладку (Properties, Duplicates, Settings...)
+    let activeMainTab = localStorage.getItem('activeMainTab');
+    if (activeMainTab) {
+        let tabElement = document.querySelector(`button[data-bs-target="${activeMainTab}"]`);
+        if (tabElement) new bootstrap.Tab(tabElement).show();
+    }
+
+    // 2. Восстанавливаем вложенную вкладку (Cron, Scraper Logs, Email)
+    let activeSubTab = localStorage.getItem('activeSubTab');
+    if (activeSubTab) {
+        let subTabElement = document.querySelector(`button[data-bs-target="${activeSubTab}"]`);
+        if (subTabElement) new bootstrap.Tab(subTabElement).show();
+    }
+
+    // 3. Запоминаем клики по главным вкладкам
+    document.querySelectorAll('#adminTabs .nav-link').forEach(tab => {
+        tab.addEventListener('shown.bs.tab', function (event) {
+            localStorage.setItem('activeMainTab', event.target.getAttribute('data-bs-target'));
+        });
+    });
+
+    // 4. Запоминаем клики по вложенным вкладкам
+    document.querySelectorAll('.nav-tabs .nav-link:not(#adminTabs .nav-link)').forEach(tab => {
+        tab.addEventListener('shown.bs.tab', function (event) {
+            localStorage.setItem('activeSubTab', event.target.getAttribute('data-bs-target'));
+        });
+    });
+});
+
+
+function startScrapers() {
+    const btn = document.getElementById('runScrapersBtn');
+    // Меняем кнопку на спиннер и блокируем её от двойного клика
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Starting...';
+    btn.disabled = true;
+
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+
+    // Тихий AJAX запрос
+    fetch('/admin/scrapers/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ 'csrf_token': csrfToken })
+    })
+    .then(res => res.json())
+    .then(data => {
+        // Запрос улетел, бэкенд пошел работать.
+        // Так как мы запоминаем вкладки в localStorage, мы можем мягко перезагружать 
+        // страницу каждые 5 секунд, чтобы пользователь видел статус "Running" и как он меняется на "Success"!
+        location.reload(); 
+    });
+}
 </script>
 
 </body>

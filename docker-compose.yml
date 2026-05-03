@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: hodu_postgres
     restart: always
     environment:
@@ -13,21 +13,42 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
   scraper:
     build: .
     container_name: hodu_scraper
     restart: on-failure
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     env_file:
       - .env
+    environment:
+      - TZ=Europe/Athens
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - TG_BOT_TOKEN=${TG_BOT_TOKEN:-}
+      - TG_CHAT_ID=${TG_CHAT_ID:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - EXTERNAL_API_BASE_URL=${EXTERNAL_API_BASE_URL:-}
+      - EXTERNAL_API_KEY=${EXTERNAL_API_KEY:-}
+      - CSRF_SECRET=${CSRF_SECRET}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      - APP_URL=${APP_URL:-http://localhost:8000}
     command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
       - "8000:8000"
     volumes:
-      - ./src:/app/src    # Теперь код синхронизируется Можно не делать build после каждой правки.
-      - ./data:/app/data  # СЮДА БУДУТ ЛИТЬСЯ  КАРТИНКИ
+      - ./src:/app/src
+      - ./data:/app/data
 
 volumes:
   postgres_data:

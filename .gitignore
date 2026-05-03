@@ -1,15 +1,59 @@
-# Стандартный игнор для Python
+
+# === Python ===
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# === Editor backups ===
+*.bak
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# === Environment ===
 .env
+.env.local
+.env.*.local
 venv/
 env/
+.venv/
 
-# === НАШИ ДАННЫЕ (НЕ ЗАЛИВАТЬ В GIT!) ===
-# Игнорируем все скачанные фотографии объектов
+# === Logs ===
+logs/
+*.log
+
+# === Scraped media (regenerated daily) ===
 data/media/
 
-# Игнорируем итоговые отчеты и временные файлы Excel
+# === IDE ===
+.vscode/
+.idea/
+*.iml
+
+# === Docker volumes ===
+data/postgres/
+data/pgdata/
+
+# === Misc artifacts ===
+*.png
+*.jpg
+*.jpeg
+*.gif
+mintty.*
+
+# === Allow specific images that ARE part of repo ===
+!src/web/static/**/*.png
+!src/web/static/**/*.jpg
+!src/web/static/**/*.jpeg
+!docs/**/*.png
+
 data/*.xlsx
 *.xlsx
 ~$*.xlsx

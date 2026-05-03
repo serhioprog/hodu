@@ -5,175 +5,345 @@ from loguru import logger
 from selectolax.lexbor import LexborHTMLParser
 from src.models.schemas import PropertyTemplate
 from src.scrapers.base import BaseScraper
+from src.scrapers.fetchers import fetcher_funnel
+from src.scrapers.fetchers.exceptions import FetcherError
 
-# 🔥 Теперь мы наследуемся от BaseScraper
+
+# The plugin exposes its real nonce via window.halkiGrid3Config.filterNonce
+# after JS loads. The HTML contains a different "decoy" nonce that fails
+# validation. We read the JS global because that's what jQuery handlers
+# actually use — verified via network capture of the live site.
+_NONCE_JS_PATH = "halkiGrid3Config.filterNonce"
+
+# Default form fields the plugin sends with EVERY load-more request,
+# even though they're empty for "no filter applied". Verified from
+# captured live request body. Backend likely 400s if these are missing.
+_DEFAULT_FILTER_FIELDS = {
+    "subcat":      "",
+    "custom_code": "",
+    "latitude":    "",
+    "longitude":   "",
+    "status":      "",
+    "type":        "",
+    "min_price":   "",
+    "max_price":   "",
+    "beds":        "",
+    "baths":       "",
+    "distance":    "",
+    "sqft_min":    "",
+    "sqft_max":    "",
+    "lot_min":     "",
+    "lot_max":     "",
+    "year_min":    "",
+    "year_max":    "",
+    "garage":      "",
+    "stories":     "",
+}
+
+
 class RealEstateCenterScraper(BaseScraper):
     def __init__(self):
-        super().__init__() # Инициализируем self.client из базы
+        super().__init__()
         self.source_domain = "realestatecenter.gr"
-        self.api_url = "https://realestatecenter.gr/wp-admin/admin-ajax.php"
-        
+        self.api_url     = "https://realestatecenter.gr/wp-admin/admin-ajax.php"
+        self.referer_url = "https://realestatecenter.gr/maps/"
+
         self.custom_headers = {
-            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Accept":           "application/json, text/javascript, */*; q=0.01",
             "X-Requested-With": "XMLHttpRequest",
-            "Origin": "https://realestatecenter.gr",
-            "Referer": "https://realestatecenter.gr/maps/",
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+            "Content-Type":     "application/x-www-form-urlencoded; charset=UTF-8",
         }
 
     async def collect_urls(self, min_price=400000) -> list[PropertyTemplate]:
-        all_properties = []
-        current_offset = 0 
-        seen_ids = set()
+        """
+        Collects all listings via WP plugin's load-more AJAX.
 
-        logger.info(f"[{self.source_domain}] 🕵️‍♂️ Шаг 1: Ищем токен API (nonce)...")
-        nonce = ""
-        try:
-            # 🔥 Используем единый клиент
-            resp = await self.client.get("https://realestatecenter.gr/maps/")
-            match = re.search(r'nonce["\']?\s*[:=]\s*["\']([a-f0-9]{10})["\']', resp.text)
-            if match:
-                nonce = match.group(1)
-                logger.success(f"[{self.source_domain}] 🔑 Найден токен API: {nonce}")
-        except Exception as e:
-            logger.warning(f"[{self.source_domain}] Ошибка прогрева: {e}")
+        Routes through fetcher_funnel.wp_ajax which:
+          * Stage 0 (curl_cffi) returns CaptchaDetected (can't bind
+            nonce to session) → funnel escalates.
+          * Stage 1 (Playwright) opens /maps/, waits for JS to set
+            window.halkiGrid3Config.filterNonce, then POSTs from inside
+            the browser session — cookies + nonce match what WP expects.
+
+        Each AJAX page is served from the same browser pool, so after
+        the first warm-up subsequent pages take ~2-3s each.
+        """
+        all_properties = []
+        current_offset = 0
+        seen_ids       = set()
+        page_no        = 0
 
         while True:
-            logger.info(f"[{self.source_domain}] Имитируем кнопку 'Load More' (Пропускаем первые {current_offset} шт.)...")
-            
-            payload = {"action": "halki_filter_properties", "offset": str(current_offset)}
-            if nonce: payload["nonce"] = nonce
+            page_no += 1
+            logger.info(
+                f"[{self.source_domain}] page {page_no}: requesting offset={current_offset}"
+            )
+
+            # Build full payload: defaults + offset
+            page_data = dict(_DEFAULT_FILTER_FIELDS)
+            page_data["offset"] = str(current_offset)
 
             try:
-                encoded_payload = urllib.parse.urlencode(payload)
-                # 🔥 Используем единый клиент POST
-                response = await self.client.post(self.api_url, data=encoded_payload, headers=self.custom_headers)
-                
-                try: data = response.json()
-                except Exception: break
-
-                if not isinstance(data, dict) or not data.get("success"): break
-                
-                html_content = data.get("data", {}).get("html", "")
-                if not html_content: break
-
-                parser = LexborHTMLParser(html_content)
-                cards = parser.css(".halki-card")
-                
-                if not cards: break
-
-                new_cards = 0
-                for card in cards:
-                    link_node = card.css_first("a.btn-redirect-link") or card.css_first("a[href*='/property/']")
-                    href = link_node.attributes.get("href") if link_node else None
-                    if not href: continue
-
-                    match_id = re.search(r'/property/(\d+)-', href)
-                    site_id = match_id.group(1) if match_id else href.split('/')[-2]
-
-                    if site_id in seen_ids: continue
-                    seen_ids.add(site_id)
-                    new_cards += 1
-
-                    card_text = card.text()
-                    price_val = None
-                    match_price = re.search(r'€\s*([\d.,]+)', card_text)
-                    if match_price: price_val = match_price.group(1).strip()
-
-                    sqm_m = re.search(r'(\d+[.,]?\d*)\s*(?:Sqm|m2|sq)', card_text, re.I)
-                    beds_m = re.search(r'(\d+)\s*(?:Bedrooms|Beds|Bedroom)', card_text, re.I)
-                    baths_m = re.search(r'(\d+)\s*(?:Bathrooms|Baths|Bathroom)', card_text, re.I)
-
-                    prop_data = PropertyTemplate(
-                        site_property_id=site_id,
-                        source_domain=self.source_domain,
-                        url=href,
-                        price=price_val,
-                        size_sqm=float(sqm_m.group(1).replace(',','.')) if sqm_m else None,
-                        bedrooms=int(beds_m.group(1)) if beds_m else None,
-                        bathrooms=int(baths_m.group(1)) if baths_m else None
-                    )
-
-                    if prop_data.price and prop_data.price >= min_price:
-                        all_properties.append(prop_data)
-
-                if new_cards == 0: break
-                current_offset += len(cards)
-                await asyncio.sleep(1)
-
-            except Exception as e:
-                logger.error(f"[{self.source_domain}] Ошибка API: {e}")
+                response = await fetcher_funnel.wp_ajax(
+                    domain        = self.source_domain,
+                    ajax_url      = self.api_url,
+                    referer_url   = self.referer_url,
+                    action        = "halki_filter_properties",
+                    nonce_js_path = _NONCE_JS_PATH,
+                    extra_data    = page_data,
+                    headers       = self.custom_headers,
+                )
+            except FetcherError as e:
+                logger.error(
+                    f"[{self.source_domain}] page {page_no}: funnel exhausted "
+                    f"({e.error_code}): {e}"
+                )
                 break
 
+            try:
+                data = response.json()
+            except Exception:
+                logger.warning(
+                    f"[{self.source_domain}] page {page_no}: non-JSON body "
+                    f"({len(response.text)} chars), stopping pagination"
+                )
+                break
+
+            if not isinstance(data, dict) or not data.get("success"):
+                logger.info(
+                    f"[{self.source_domain}] page {page_no}: API returned success=false, stopping"
+                )
+                break
+
+            html_content = data.get("data", {}).get("html", "")
+            if not html_content:
+                break
+
+            parser = LexborHTMLParser(html_content)
+            cards  = parser.css(".halki-card")
+            if not cards:
+                break
+
+            new_cards = 0
+            for card in cards:
+                link_node = (
+                    card.css_first("a.btn-redirect-link")
+                    or card.css_first("a[href*='/property/']")
+                )
+                href = link_node.attributes.get("href") if link_node else None
+                if not href:
+                    continue
+
+                match_id = re.search(r'/property/(\d+)-', href)
+                site_id  = match_id.group(1) if match_id else href.split('/')[-2]
+
+                if site_id in seen_ids:
+                    continue
+                seen_ids.add(site_id)
+                new_cards += 1
+
+                card_text = card.text()
+                price_val = None
+                m_price   = re.search(r'€\s*([\d.,]+)', card_text)
+                if m_price:
+                    price_val = m_price.group(1).strip()
+
+                sqm_m  = re.search(r'(\d+[.,]?\d*)\s*(?:Sqm|m2|sq)',  card_text, re.I)
+                beds_m = re.search(r'(\d+)\s*(?:Bedrooms|Beds|Bedroom)',  card_text, re.I)
+                baths_m= re.search(r'(\d+)\s*(?:Bathrooms|Baths|Bathroom)', card_text, re.I)
+
+                prop_data = PropertyTemplate(
+                    site_property_id = site_id,
+                    source_domain    = self.source_domain,
+                    url              = href,
+                    price            = price_val,
+                    size_sqm         = float(sqm_m.group(1).replace(',', '.')) if sqm_m else None,
+                    bedrooms         = int(beds_m.group(1)) if beds_m else None,
+                    bathrooms        = int(baths_m.group(1)) if baths_m else None,
+                )
+
+                if prop_data.price and prop_data.price >= min_price:
+                    all_properties.append(prop_data)
+
+            if new_cards == 0:
+                break
+            current_offset += len(cards)
+            await asyncio.sleep(1)
+
+        logger.info(
+            f"[{self.source_domain}] collect_urls done: "
+            f"{len(all_properties)} listings ≥ {min_price}€ "
+            f"(across {page_no} page(s), {len(seen_ids)} unique IDs seen)"
+        )
         return all_properties
 
     async def fetch_details(self, url: str) -> dict:
+        """
+        Parse a single property detail page.
+
+        Site structure (verified 2026-05-03):
+          * Description in <span class="full-desc">  (JS hides it; we want
+            the raw HTML version, NOT the truncated <span class="short-desc">)
+          * Features under <div class="specs"> with accordion-content children
+            of form <li>Near to: Sea, ...</li>
+          * Area, Sub Area, Bedrooms etc in <div class="spec"> blocks with
+            <strong> labels.
+          * Property ID in <span class="property-id-value"> (alphanumeric like
+            "A047", separate from the URL site_property_id like "2353681").
+
+        Old layout (var property_data + .property-description) is gone since
+        the site migrated to a new theme. Selectors below match the current
+        live HTML.
+        """
         try:
-            # 🔥 Используем единый клиент
             response = await self.client.get(url)
-            html_content = response.text
-            parser = LexborHTMLParser(html_content)
-            
+            parser = LexborHTMLParser(response.text)
+
             details = {
-                "images": [], "extra_features": {}, "description": "",
-                "subarea": None, "year_built": None, "land_size_sqm": None,
-                "levels": None, "latitude": None, "longitude": None
+                "description": "", "price": None, "size_sqm": None, "land_size_sqm": None,
+                "bedrooms": None, "bathrooms": None, "year_built": None, "area": None,
+                "subarea": None, "category": "Villa", "levels": None, "site_last_updated": None,
+                "latitude": None, "longitude": None, "images": [], "extra_features": {}
             }
 
-            slides = parser.css(".swiper-slide img")
-            for slide in slides:
-                src = slide.attributes.get("src")
-                if src and src not in details["images"]: details["images"].append(src)
+            # ── 1. Description: prefer .full-desc (complete), fallback to og:description
+            full_desc_node = parser.css_first("span.full-desc")
+            if full_desc_node:
+                # full-desc contains <p> tags with paragraphs. Extract with
+                # newline separators so paragraph breaks survive in extractor.
+                details["description"] = full_desc_node.text(separator="\n", strip=True)
 
-            for p in parser.css("p"):
-                p_text = p.text(strip=True)
-                if "Sub Area:" in p_text:
-                    details["subarea"] = p_text.replace("Sub Area:", "").strip()
-                    break
+            if not details["description"] or len(details["description"]) < 50:
+                # Fallback: short-desc, then og:description
+                short_desc_node = parser.css_first("span.short-desc")
+                if short_desc_node:
+                    short_text = short_desc_node.text(separator="\n", strip=True)
+                    if len(short_text) > len(details["description"]):
+                        details["description"] = short_text
 
-            features_block = parser.css_first("#features")
-            if features_block:
-                feature_items = [li.text(strip=True) for li in features_block.css("li")]
-                details["extra_features"]["raw_features"] = " | ".join(feature_items)
+                og_desc = parser.css_first('meta[property="og:description"]')
+                if og_desc and og_desc.attributes.get("content"):
+                    og_text = og_desc.attributes["content"]
+                    if len(og_text) > len(details["description"]):
+                        details["description"] = og_text
 
-            lat_match = re.search(r'lat\s*=\s*["\']([-\d.]+)["\']', html_content)
-            lng_match = re.search(r'lng\s*=\s*["\']([-\d.]+)["\']', html_content)
-            if lat_match and lng_match:
-                try:
-                    details["latitude"] = float(lat_match.group(1))
-                    details["longitude"] = float(lng_match.group(1))
-                except ValueError: pass
+            # ── 2. Greedy text fallback for the NLP extractor
+            greedy_text = ""
+            main_container = (
+                parser.css_first(".specs")
+                or parser.css_first("main")
+                or parser.css_first("article")
+                or parser.css_first("body")
+            )
+            if main_container:
+                greedy_text = main_container.text(separator=" ", strip=True)
 
-            desc_node = parser.css_first(".full-desc")
-            if desc_node:
-                desc_text = desc_node.text(separator="\n", strip=True)
-                details["description"] = desc_text
-                search_text = (desc_text + " " + url).lower()
+            # ── 3. Features: collect <li> items inside .specs accordion-content blocks.
+            #    Each <li> is structured as "Key: Value, Value, Value", e.g.:
+            #      "Near to: Sea, Seaside"
+            #      "With View: Sea, Mountain, Nature, Openness, Panoramic"
+            #      "Special features: Furnished, Bright, Seaside"
+            #
+            #    We split each into its own top-level key in extra_features.
+            #    This matters because the quality metric counts top-level
+            #    JSONB keys: {raw_features: [...3 items...]} = 1 key (bad),
+            #    but {near_to: "...", with_view: "...", special_features: "..."}
+            #    = 3 keys (good). Same data, better shape.
+            #
+            #    raw_features list is also kept as a backup for debugging /
+            #    re-parsing if normalisation logic changes.
+            features_lines = []
+            for li in parser.css(".specs .accordion-content li"):
+                text = li.text(strip=True)
+                if text:
+                    features_lines.append(text)
 
-                prop_types = ["apartment", "maisonette", "villa", "detached house", "residential complex", "hotel", "bungalow", "studio", "residential building", "shop", "land plot", "parcel"]
-                for pt in prop_types:
-                    if pt in search_text or pt.replace(" ", "-") in search_text:
-                        details["category"] = pt.title().replace("Residencial", "Residential")
-                        break
+            if features_lines:
+                details["extra_features"]["raw_features"] = features_lines
 
-                year_match = re.search(r'built[- ]?in\s*(\d{4})|built\s*(\d{4})', desc_text, re.IGNORECASE)
-                if year_match:
-                    year_val = year_match.group(1) or year_match.group(2)
-                    if year_val and year_val.isdigit(): details["year_built"] = int(year_val)
+                # Also explode key:value pairs into structured keys.
+                for line in features_lines:
+                    if ":" not in line:
+                        continue
+                    key_part, _, value_part = line.partition(":")
+                    # Normalise the key: lowercase, spaces → underscores,
+                    # strip non-alphanumerics. "With View" → "with_view".
+                    norm_key = re.sub(r"[^\w\s]", "", key_part.lower()).strip()
+                    norm_key = re.sub(r"\s+", "_", norm_key)
+                    value = value_part.strip()
+                    if norm_key and value and norm_key not in details["extra_features"]:
+                        details["extra_features"][norm_key] = value
 
-                land_a = re.search(r'set\s+on\s+(?:over\s+)?([\d.,]+)\s*(?:sq\.?m\.?|sqm|m²|sq\.? meters?)', desc_text, re.IGNORECASE)
-                land_b = re.search(r'([\d.,]+)\s*(?:sq\.?m\.?|sqm|m²|sq\.? meters?)\s+of\s+(?:[\w\s,]{1,50})?(?:land|garden|plot|private space)', desc_text, re.IGNORECASE)
-                land_res = land_a or land_b
-                if land_res:
-                    clean_land = land_res.group(1).replace(',', '')
-                    try: details["land_size_sqm"] = float(clean_land)
-                    except ValueError: pass
+            # ── 4. Area & Sub Area from <div class="spec"> blocks
+            for spec in parser.css(".specs .spec"):
+                heading = spec.css_first("h3")
+                if not heading:
+                    continue
+                heading_text = heading.text(strip=True).lower()
+                content_text = spec.text(separator=" ", strip=True)
 
-                levels_match = re.search(r'(?:across|over|in)\s+(one|two|three|four|five|\d+)\s+levels?', desc_text, re.IGNORECASE)
-                if levels_match:
-                    lvl_val = levels_match.group(1).lower()
-                    word_to_num = {'one': "1", 'two': "2", 'three': "3", 'four': "4", 'five': "5"}
-                    details["levels"] = word_to_num.get(lvl_val, lvl_val if lvl_val.isdigit() else None)
+                if "area" in heading_text and "lot" in heading_text:
+                    # "Area: 140 m²  Sub Area: Pefkochori"
+                    m_area = re.search(r"Area:\s*([\d.,]+)\s*m", content_text, re.I)
+                    if m_area and not details.get("size_sqm"):
+                        try:
+                            details["size_sqm"] = float(m_area.group(1).replace(",", "."))
+                        except ValueError:
+                            pass
+                    m_sub = re.search(r"Sub\s*Area:\s*([A-Za-zÀ-ÿ\s\-]+)", content_text)
+                    if m_sub:
+                        details["subarea"] = m_sub.group(1).strip()
+                elif heading_text == "features":
+                    # "4 Bedrooms • 2 Bathrooms • 140 m²"
+                    m_bed = re.search(r"(\d+)\s*Bedroom", content_text, re.I)
+                    if m_bed and not details.get("bedrooms"):
+                        details["bedrooms"] = int(m_bed.group(1))
+                    m_bath = re.search(r"(\d+)\s*Bathroom", content_text, re.I)
+                    if m_bath and not details.get("bathrooms"):
+                        details["bathrooms"] = int(m_bath.group(1))
+
+            # ── 5. Site-specific property ID (e.g. "A047") — store as extra
+            id_node = parser.css_first(".property-id-value")
+            if id_node:
+                pid = id_node.text(strip=True)
+                if pid:
+                    details["extra_features"]["site_internal_id"] = pid
+
+            # ── 6. Images from gallery (Elementor swiper, plus generic <img>s)
+            for img in parser.css(".swiper-slide img, .elementor-image-gallery img, .property-gallery img"):
+                src = img.attributes.get("src") or img.attributes.get("data-src", "")
+                if not src:
+                    continue
+                if src.startswith("//"):
+                    src = "https:" + src
+                # Strip Elementor-style size suffixes to get the high-res version
+                high_res_src = re.sub(r"-\d{2,4}x\d{2,4}(\.[a-zA-Z0-9]+)$", r"\1", src)
+                if (
+                    high_res_src not in details["images"]
+                    and not high_res_src.endswith(".svg")
+                    and "logo" not in high_res_src.lower()
+                ):
+                    details["images"].append(high_res_src)
+
+            # ── 7. Coordinates from any embedded map JS
+            if not details.get("latitude"):
+                script_match = re.search(
+                    r"setView\(\[\s*([0-9.]+)\s*,\s*([0-9.]+)\s*\]", response.text,
+                )
+                if script_match:
+                    details["latitude"] = float(script_match.group(1))
+                    details["longitude"] = float(script_match.group(2))
+
+            # ── 8. Run the smart NLP extractor over description + greedy text
+            full_text_for_nlp = f"{details['description']} \n {greedy_text}"
+            smart_data = self.extractor.analyze_full_text(full_text_for_nlp)
+
+            for key, value in smart_data.items():
+                if value is not None:
+                    if key == "extra_features":
+                        details["extra_features"].update(value)
+                    elif not details.get(key):
+                        details[key] = value
 
             return details
 

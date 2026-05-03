@@ -1,102 +1,187 @@
-import asyncio
+"""
+Scheduler service. Used ONLY from main.py's FastAPI lifespan —
+no standalone `__main__`. Running two independent schedulers (one in
+uvicorn, one in a CLI) would produce double jobs.
+"""
+from datetime import datetime
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from loguru import logger
-from datetime import datetime
-from sqlalchemy import select, func
+from sqlalchemy import select
 
 from src.database.db import async_session_maker
-from src.models.domain import Property, PropertyStatus, SystemSetting # Добавили SystemSetting
-from src.tasks.daily_sync import daily_sync
+from src.models.domain import Property, PropertyStatus, SystemSetting
 from src.services.notifier import send_magic_links_to_agents
+from src.tasks.daily_sync import daily_sync
+from src.tasks.probe_job import run_probe_job
 
-scheduler = AsyncIOScheduler()
+from src.models.domain import Property, PropertyStatus, SystemSetting, EmailLog, Agent
 
-async def get_setting(key: str, default: str):
-    """Получает настройку из базы или создает дефолтную"""
+# Single process-wide scheduler instance, shared with main.py lifespan.
+scheduler = AsyncIOScheduler(timezone="Europe/Athens")
+
+
+async def get_setting(key: str, default: str) -> str:
     async with async_session_maker() as session:
-        result = await session.execute(select(SystemSetting).where(SystemSetting.key == key))
-        setting = result.scalars().first()
-        if not setting:
-            setting = SystemSetting(key=key, value=default)
-            session.add(setting)
+        res = await session.execute(
+            select(SystemSetting).where(SystemSetting.key == key)
+        )
+        setting = res.scalars().first()
+        if setting is None:
+            session.add(SystemSetting(key=key, value=default))
             await session.commit()
             return default
         return setting.value
 
-async def job_parsing():
-    """Задача — Синхронизация данных"""
-    logger.info("⏰ Запуск ночного скрапинга...")
+
+# =============================================================
+# JOBS
+# =============================================================
+async def job_parsing() -> None:
+    logger.info("⏰ scheduled: daily_sync()")
     try:
         await daily_sync()
-        logger.success("✅ Синхронизация завершена.")
     except Exception as e:
-        logger.error(f"❌ Ошибка в цикле синхронизации: {e}")
+        logger.error(f"daily_sync failed: {e}")
 
-async def job_email_report():
-    """Задача — Рассылка отчета и сброс статусов"""
-    logger.info("⏰ Подготовка утреннего отчета...")
-    async with async_session_maker() as session:
-        # Достаем все новинки и изменения цен
-        query = select(Property).where(
-            Property.status.in_([PropertyStatus.NEW.value, PropertyStatus.PRICE_CHANGED.value])
-        )
-        result = await session.execute(query)
-        pending_props = result.scalars().all()
-        count = len(pending_props)
 
-        if count > 0:
-            today_str = datetime.now().strftime("%d.%m.%Y")
-            
-            # Отправляем письмо
-            await send_magic_links_to_agents(today_str, count)
-            logger.success(f"📧 Отчет за {today_str} отправлен ({count} объектов).")
+async def job_probe() -> None:
+    """Weekly probe of promoted domains.
 
-            # 🔥 ГЛАВНАЯ МАГИЯ: Переводим всё в ACTIVE после отправки письма!
-            for p in pending_props:
-                p.status = PropertyStatus.ACTIVE.value
-            
-            await session.commit()
-            logger.info("🧹 Статусы NEW и PRICE DROP успешно переведены в ACTIVE.")
-        else:
-            logger.info("📭 Нет новых объектов для отчета. Письмо не отправлено.")
-
-async def update_schedule():
+    Tries to demote domains stuck on higher fetch-funnel stages back to
+    stage 0 (cheaper). See src.tasks.probe_job for details. Runs Mondays
+    04:00 Europe/Athens — quietest hour, no overlap with daily_sync.
     """
-    Проверяет базу данных и обновляет расписание. 
-    Вызывается при старте и раз в 10 минут.
-    """
-    sync_time = await get_setting('sync_time', '00:01')
-    report_time = await get_setting('report_time', '09:30')
-    
-    # Парсим время
-    h_sync, m_sync = map(int, sync_time.split(':'))
-    h_repo, m_repo = map(int, report_time.split(':'))
-
-    # Очищаем старые задачи, чтобы не дублировались
-    scheduler.remove_all_jobs()
-    
-    # Добавляем основные задачи
-    scheduler.add_job(job_parsing, CronTrigger(hour=h_sync, minute=m_sync), id='job_sync')
-    scheduler.add_job(job_email_report, CronTrigger(hour=h_repo, minute=m_repo), id='job_report')
-    
-    # Добавляем задачу самообновления (проверка настроек в БД каждые 10 минут)
-    scheduler.add_job(update_schedule, 'interval', minutes=10, id='job_update_schedule')
-    
-    logger.info(f"🔄 Расписание обновлено: Парсинг в {sync_time}, Рассылка в {report_time}")
-
-async def main():
-    # Первый запуск для настройки
-    await update_schedule()
-    
-    scheduler.start()
-    logger.info("🚀 Планировщик запущен и слушает базу данных...")
-
+    logger.info("⏰ scheduled: weekly funnel probe")
     try:
-        while True:
-            await asyncio.sleep(1)
-    except (KeyboardInterrupt, SystemExit):
-        scheduler.shutdown()
+        await run_probe_job()
+    except Exception as e:
+        logger.error(f"probe_job failed: {e}")
 
-if __name__ == "__main__":
-    asyncio.run(main())
+
+async def job_email_report() -> None:
+    logger.info("⏰ scheduled: email report")
+    async with async_session_maker() as session:
+        pending = (await session.execute(
+            select(Property).where(
+                Property.status.in_([
+                    PropertyStatus.NEW,
+                    PropertyStatus.PRICE_CHANGED,
+                ])
+            )
+        )).scalars().all()
+
+        # Получаем всех активных агентов для записи в лог
+        agents = (await session.execute(
+            select(Agent).where(Agent.is_active == True)
+        )).scalars().all()
+
+        if not pending:
+            logger.info("📭 nothing to report")
+            # Запишем в лог, что рассылка пыталась запуститься, но данных не было
+            for agent in agents:
+                session.add(EmailLog(
+                    recipient_email=agent.email,
+                    status="NO NEW DATA",
+                    properties_count=0
+                ))
+            await session.commit()
+            return
+
+        today = datetime.now().strftime("%d.%m.%Y")
+        
+        try:
+            stats = await send_magic_links_to_agents(today, len(pending))
+            success = stats.get("sent", 0) > 0
+            error_msg = None
+        except Exception as e:
+            logger.error(f"Email sending failed: {e}")
+            success = False
+            error_msg = str(e)
+
+        if success:
+            for p in pending:
+                p.status = PropertyStatus.ACTIVE
+            
+            for agent in agents:
+                session.add(EmailLog(
+                    recipient_email=agent.email,
+                    status="DELIVERED",
+                    properties_count=len(pending)
+                ))
+            logger.info(f"🧹 {len(pending)} properties flipped to ACTIVE")
+        else:
+            for agent in agents:
+                session.add(EmailLog(
+                    recipient_email=agent.email,
+                    status="FAILED",
+                    properties_count=len(pending),
+                    error_message=error_msg or "Failed to send via SMTP"
+                ))
+
+        await session.commit()
+
+
+# =============================================================
+# DYNAMIC RESCHEDULING
+# =============================================================
+async def update_schedule() -> None:
+    """
+    Reads sync_time / report_time from system_settings and rewires the cron
+    triggers. Self-scheduled to run every 10 minutes so admin edits apply
+    without a service restart.
+    """
+    try:
+        sync_time   = await get_setting("sync_time",   "00:01")
+        report_time = await get_setting("report_time", "09:30")
+
+        h_sync, m_sync = map(int, sync_time.split(":"))
+        h_rep,  m_rep  = map(int, report_time.split(":"))
+
+        _upsert_job("job_sync",  job_parsing,      CronTrigger(hour=h_sync, minute=m_sync))
+        _upsert_job("job_report", job_email_report, CronTrigger(hour=h_rep,  minute=m_rep))
+
+        # Weekly funnel probe — Mondays 04:00 Europe/Athens.
+        # Day-of-week 0=Monday in APScheduler. Using a fixed cron rather
+        # than a system_settings entry because this is a low-frequency
+        # internal job; we don't expect admins to want to retune it.
+        _upsert_job(
+            "job_funnel_probe", job_probe,
+            CronTrigger(day_of_week=0, hour=4, minute=0),
+        )
+
+        if not scheduler.get_job("job_update_schedule"):
+            scheduler.add_job(update_schedule, "interval",
+                              minutes=10, id="job_update_schedule")
+
+        logger.info(f"🔄 schedule refreshed: sync={sync_time} report={report_time} probe=Mon 04:00")
+
+    except Exception as e:
+        logger.error(f"schedule refresh failed (keeping previous): {e}")
+
+
+def _upsert_job(job_id: str, func, trigger) -> None:
+    if scheduler.get_job(job_id):
+        scheduler.reschedule_job(job_id, trigger=trigger)
+    else:
+        scheduler.add_job(func, trigger, id=job_id)
+
+
+# =============================================================
+# LIFESPAN HOOKS
+# =============================================================
+async def start_scheduler() -> None:
+    """Called from FastAPI lifespan on app startup."""
+    if scheduler.running:
+        return
+    await update_schedule()
+    scheduler.start()
+    logger.info("🚀 APScheduler started inside FastAPI process")
+
+
+async def stop_scheduler() -> None:
+    """Called from FastAPI lifespan on app shutdown."""
+    if scheduler.running:
+        scheduler.shutdown(wait=False)
+        logger.info("🛑 APScheduler stopped")

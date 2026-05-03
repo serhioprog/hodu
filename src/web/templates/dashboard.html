@@ -6,51 +6,42 @@
     <title>hodu. | Properties</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
-    
+
     <style>
         body { background: #f7f7f7; font-family: -apple-system, sans-serif; color: #222; }
         .navbar { background: white; border-bottom: 1px solid #eee; padding: 15px 0; margin-bottom: 30px; position: sticky; top: 0; z-index: 1000; }
         .logo { color: #ff385c; font-weight: 800; font-size: 24px; letter-spacing: -1px; text-decoration: none; }
         .main-card { background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); padding: 25px; margin-bottom: 50px; }
-        
-        /* 🍔 Burger Menu */
-        .menu-btn { width: 44px; height: 44px; border-radius: 50%; background: #fff; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; color: #555; transition: all 0.2s; cursor: pointer; }
+
+        .menu-btn { width: 44px; height: 44px; border-radius: 50%; background: #fff; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; color: #555; cursor: pointer; }
         .menu-btn:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); color: #222; }
         .dropdown-menu-custom { border-radius: 12px; border: 1px solid #ebebeb; box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 10px 0; min-width: 220px; margin-top: 10px !important; }
-        .dropdown-menu-custom .dropdown-item { padding: 10px 20px; font-weight: 500; color: #222; transition: background 0.2s; }
+        .dropdown-menu-custom .dropdown-item { padding: 10px 20px; font-weight: 500; color: #222; }
         .dropdown-menu-custom .dropdown-item:hover { background-color: #f7f7f7; }
         .dropdown-divider { margin: 8px 0; border-color: #ebebeb; }
 
-        /* Стили таблиц */
         .table-custom { font-size: 14px; vertical-align: middle; border-collapse: separate; border-spacing: 0; width: 100%; }
         .table-custom th { text-transform: uppercase; font-size: 12px; color: #888; border-bottom: 2px solid #eee !important; padding-bottom: 10px; }
         .table-custom td { border-bottom: 1px solid #eee; padding: 12px 8px; }
-        
-        /* Кликабельные строки */
+
         .clickable-row { cursor: pointer; }
-        .clickable-row td { transition: background-color 0.15s ease-in-out; }
         .clickable-row:hover td { background-color: #e2e6ea !important; }
-        
-        /* Миниатюры */
+
         .admin-thumb { width: 70px; height: 50px; object-fit: cover; border-radius: 6px; background-color: #e9ecef; }
         .admin-thumb-empty { width: 70px; height: 50px; border-radius: 6px; background-color: #e9ecef; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #adb5bd; }
 
-        /* Бейджи статусов */
-        .badge-new { background: #e6f4ea; color: #1e7e34; font-weight: 700; border: 1px solid #cce8d6; }
+        .badge-new   { background: #e6f4ea; color: #1e7e34; font-weight: 700; border: 1px solid #cce8d6; }
         .badge-price { background: #fce8e6; color: #d93025; font-weight: 700; border: 1px solid #fad2cf; }
-        .badge-active { background: #fff; color: #5f6368; font-weight: 600; border: 1px solid #dadce0; }
-        
-        /* Панель фильтров */
+        .badge-active{ background: #fff;    color: #5f6368; font-weight: 600; border: 1px solid #dadce0; }
+
         .filter-panel { background: #fff; padding: 18px 20px 6px 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.03); border: 1px solid #ebebeb; }
         .filter-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #888; font-weight: 700; margin-bottom: 6px; display: block; }
-        .price-dash { background: transparent; border-left: none; border-right: none; color: #888; padding: 0 8px; display: flex; align-items: center; }
+        .price-dash { background: transparent; border: none; color: #888; padding: 0 8px; display: flex; align-items: center; }
 
-        /* Пагинация hodu */
         .dataTables_wrapper .pagination { gap: 8px; justify-content: flex-end; margin-top: 10px; }
-        .dataTables_wrapper .page-item .page-link { border: none !important; border-bottom: 3px solid transparent !important; border-radius: 0 !important; color: #555; font-size: 15px; font-weight: 600; padding: 8px 12px; background-color: transparent !important; transition: all 0.2s ease; margin-left: 0; }
-        .dataTables_wrapper .page-item.active .page-link { color: #ff385c !important; border-bottom-color: #ff385c !important; box-shadow: none !important; background-color: transparent !important; }
-        .dataTables_wrapper .page-item .page-link:hover { color: #ff385c !important; border-bottom-color: #ff385c !important; background-color: transparent !important; }
-        .dataTables_wrapper .page-item.disabled .page-link { color: #bbb !important; border-bottom-color: transparent !important; }
+        .dataTables_wrapper .page-item .page-link { border: none !important; border-bottom: 3px solid transparent !important; border-radius: 0 !important; color: #555; font-weight: 600; padding: 8px 12px; background-color: transparent !important; }
+        .dataTables_wrapper .page-item.active .page-link { color: #ff385c !important; border-bottom-color: #ff385c !important; }
+        .dataTables_wrapper .page-item .page-link:hover  { color: #ff385c !important; border-bottom-color: #ff385c !important; }
         .dataTables_info { padding-top: 1rem !important; font-weight: 500; }
     </style>
 </head>
@@ -59,17 +50,23 @@
 <nav class="navbar">
     <div class="container d-flex justify-content-between align-items-center">
         <a href="/daily-report" class="logo">hodu.</a>
-        
+
         <div class="dropdown">
             <button class="menu-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
             <ul class="dropdown-menu dropdown-menu-end dropdown-menu-custom">
                 <li><a class="dropdown-item" href="/daily-report">Dashboard</a></li>
                 {% if current_user and current_user.is_admin %}
-                <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item" href="/admin">Control Panel</a></li>
                 {% endif %}
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <form action="/logout" method="post" class="m-0">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="dropdown-item" style="background:none;border:none;width:100%;text-align:left;">Sign out</button>
+                    </form>
+                </li>
             </ul>
         </div>
     </div>
@@ -77,12 +74,11 @@
 
 <div class="container">
     <div class="main-card">
-        
+
         <div class="filter-panel">
             <div class="row align-items-end g-3">
-                
                 <div class="col-md-1 mb-3">
-                    <label class="filter-label">SHOW</label>
+                    <label class="filter-label">Show</label>
                     <select id="customLength" class="form-select form-select-sm">
                         <option value="10">10</option>
                         <option value="25" selected>25</option>
@@ -90,37 +86,28 @@
                         <option value="100">100</option>
                     </select>
                 </div>
-
                 <div class="col-md-3 mb-3">
-                    <label class="filter-label">SEARCH</label>
+                    <label class="filter-label">Search</label>
                     <input type="text" id="customSearch" class="form-control form-control-sm" placeholder="Location, text...">
                 </div>
-
                 <div class="col-md-2 mb-3">
-                    <label class="filter-label">AREA</label>
-                    <select id="filterArea" class="form-select form-select-sm">
-                        <option value="">All areas</option>
-                    </select>
+                    <label class="filter-label">Area</label>
+                    <select id="filterArea" class="form-select form-select-sm"><option value="">All areas</option></select>
                 </div>
-
                 <div class="col-md-2 mb-3">
-                    <label class="filter-label">TYPE</label>
-                    <select id="filterType" class="form-select form-select-sm">
-                        <option value="">All types</option>
-                    </select>
+                    <label class="filter-label">Type</label>
+                    <select id="filterType" class="form-select form-select-sm"><option value="">All types</option></select>
                 </div>
-
                 <div class="col-md-3 mb-3">
-                    <label class="filter-label">PRICE (€)</label>
+                    <label class="filter-label">Price (€)</label>
                     <div class="input-group input-group-sm">
                         <input type="number" id="filterPriceMin" class="form-control" placeholder="Min" min="0">
                         <span class="input-group-text price-dash">-</span>
                         <input type="number" id="filterPriceMax" class="form-control" placeholder="Max" min="0">
                     </div>
                 </div>
-
                 <div class="col-md-1 mb-3">
-                    <label class="filter-label">STATUS</label>
+                    <label class="filter-label">Status</label>
                     <select id="filterStatus" class="form-select form-select-sm">
                         <option value="">All</option>
                         <option value="NEW">New</option>
@@ -128,7 +115,6 @@
                         <option value="ACTIVE">Active</option>
                     </select>
                 </div>
-
             </div>
         </div>
 
@@ -155,18 +141,20 @@
                             {% endif %}
                         </td>
                         <td class="fw-bold">{{ prop.calc_municipality or prop.area or '—' }}</td>
-                        <td>{{ prop.category }}</td>
-                        <td>{{ prop.size_sqm|int }} m²</td>
-                        <td class="fw-bold text-nowrap" data-sort="{{ prop.price }}">
-                            {% if prop.status == 'PRICE_CHANGED' and prop.previous_price %}
-                                <span class="text-muted text-decoration-line-through small me-1 fw-normal">{{ "{:,.0f}".format(prop.previous_price).replace(',', ' ') }}</span>
+                        <td>{{ prop.category or '—' }}</td>
+                        <td>{% if prop.size_sqm %}{{ prop.size_sqm|int }} m²{% else %}—{% endif %}</td>
+                        <td class="fw-bold text-nowrap" data-sort="{{ prop.price or 0 }}">
+                            {% set st = prop.status.value if prop.status.value is defined else prop.status %}
+                            {% if st == 'PRICE_CHANGED' and prop.previous_price %}
+                                <span class="text-muted text-decoration-line-through small me-1 fw-normal">{{ prop.previous_price | euro }}</span>
                             {% endif %}
-                            {{ "{:,.0f}".format(prop.price).replace(',', ' ') }} €
+                            {{ prop.price | euro }}
                         </td>
                         <td>
-                            {% if prop.status == 'NEW' %}
+                            {% set st = prop.status.value if prop.status.value is defined else prop.status %}
+                            {% if st == 'NEW' %}
                                 <span class="badge badge-new">NEW</span>
-                            {% elif prop.status == 'PRICE_CHANGED' %}
+                            {% elif st == 'PRICE_CHANGED' %}
                                 <span class="badge badge-price">PRICE DROP</span>
                             {% else %}
                                 <span class="badge badge-active">ACTIVE</span>
@@ -184,56 +172,52 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
-
 <script>
-    $(document).ready(function() {
-        
-        $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
-            if (settings.nTable.id !== 'propertiesTable') { return true; }
-            var min = parseInt($('#filterPriceMin').val(), 10);
-            var max = parseInt($('#filterPriceMax').val(), 10);
-            var price = parseFloat(data[4].replace(/[^\d]/g, ''));
-            if ( (isNaN(min) && isNaN(max)) || (isNaN(min) && price <= max) || (min <= price && isNaN(max)) || (min <= price && price <= max) ) { return true; }
-            return false;
-        });
-
-        var table = $('#propertiesTable').DataTable({
-            dom: "<'row'<'col-sm-12'tr>><'row mt-3 align-items-center'<'col-sm-12 col-md-5 small text-muted'i><'col-sm-12 col-md-7 d-flex justify-content-end'p>>",
-            order: [], 
-            pageLength: 25,
-            columnDefs: [{ orderable: false, targets: 0 }]
-        });
-
-        $('#customLength').on('change', function() { table.page.len($(this).val()).draw(); });
-        $('#customSearch').on('keyup', function() { table.search($(this).val()).draw(); });
-
-        table.column(1).data().unique().sort().each(function (d, j) {
-            var val = $('<div/>').html(d).text().trim(); 
-            if (val && val !== '—') { $('#filterArea').append('<option value="' + val + '">' + val + '</option>'); }
-        });
-
-        table.column(2).data().unique().sort().each(function (d, j) {
-            var val = $('<div/>').html(d).text().trim(); 
-            if (val && val !== '—') { $('#filterType').append('<option value="' + val + '">' + val + '</option>'); }
-        });
-
-        $('#filterStatus').on('change', function () {
-            var val = $.fn.dataTable.util.escapeRegex($(this).val());
-            table.column(5).search(val ? val : '', true, false).draw();
-        });
-
-        $('#filterArea').on('change', function () {
-            var val = $.fn.dataTable.util.escapeRegex($(this).val());
-            table.column(1).search(val ? '^' + val + '$' : '', true, false).draw();
-        });
-
-        $('#filterType').on('change', function () {
-            var val = $.fn.dataTable.util.escapeRegex($(this).val());
-            table.column(2).search(val ? '^' + val + '$' : '', true, false).draw();
-        });
-
-        $('#filterPriceMin, #filterPriceMax').on('keyup change', function() { table.draw(); });
+$(document).ready(function () {
+    $.fn.dataTable.ext.search.push(function (settings, data) {
+        if (settings.nTable.id !== 'propertiesTable') return true;
+        var min = parseInt($('#filterPriceMin').val(), 10);
+        var max = parseInt($('#filterPriceMax').val(), 10);
+        var price = parseFloat((data[4] || '').replace(/[^\d]/g, ''));
+        if ((isNaN(min) && isNaN(max)) ||
+            (isNaN(min) && price <= max) ||
+            (min <= price && isNaN(max)) ||
+            (min <= price && price <= max)) return true;
+        return false;
     });
+
+    var table = $('#propertiesTable').DataTable({
+        dom: "<'row'<'col-sm-12'tr>><'row mt-3 align-items-center'<'col-sm-12 col-md-5 small text-muted'i><'col-sm-12 col-md-7 d-flex justify-content-end'p>>",
+        order: [], pageLength: 25,
+        columnDefs: [{ orderable: false, targets: 0 }]
+    });
+
+    $('#customLength').on('change', function () { table.page.len($(this).val()).draw(); });
+    $('#customSearch').on('keyup', function () { table.search($(this).val()).draw(); });
+
+    table.column(1).data().unique().sort().each(function (d) {
+        var val = $('<div/>').html(d).text().trim();
+        if (val && val !== '—') $('#filterArea').append('<option value="' + val + '">' + val + '</option>');
+    });
+    table.column(2).data().unique().sort().each(function (d) {
+        var val = $('<div/>').html(d).text().trim();
+        if (val && val !== '—') $('#filterType').append('<option value="' + val + '">' + val + '</option>');
+    });
+
+    $('#filterStatus').on('change', function () {
+        var val = $.fn.dataTable.util.escapeRegex($(this).val());
+        table.column(5).search(val || '', true, false).draw();
+    });
+    $('#filterArea').on('change', function () {
+        var val = $.fn.dataTable.util.escapeRegex($(this).val());
+        table.column(1).search(val ? '^' + val + '$' : '', true, false).draw();
+    });
+    $('#filterType').on('change', function () {
+        var val = $.fn.dataTable.util.escapeRegex($(this).val());
+        table.column(2).search(val ? '^' + val + '$' : '', true, false).draw();
+    });
+    $('#filterPriceMin, #filterPriceMax').on('keyup change', function () { table.draw(); });
+});
 </script>
 </body>
 </html>

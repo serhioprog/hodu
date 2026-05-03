@@ -1,0 +1,146 @@
+{# Compute: are ALL members of this cluster inactive (DELISTED)?
+   Used to show a "Delisted" badge for clusters where the admin has
+   nothing to action right now, but visibility into matching is preserved. #}
+{% set active_members = cluster.members | selectattr('is_active') | list %}
+{% set all_delisted = active_members | length == 0 and cluster.members | length > 0 %}
+
+<div class="cluster-card" id="cluster-card-{{ cluster.id }}">
+    <!-- Шапка с flex-box выравниванием -->
+    <div class="cluster-header d-flex justify-content-between align-items-center">
+
+        <!-- ЛЕВАЯ ЧАСТЬ: ID и Статус -->
+        <div class="d-flex align-items-center gap-3">
+            <span class="fw-bold text-dark" style="font-size: 15px;">Cluster: {{ (cluster.id | string)[:8] | upper }}</span>
+
+            {% if cluster.status == 'PENDING' or cluster.status.value == 'PENDING' %}
+                <span class="badge cluster-status-badge" style="background-color: #FEF3C7; color: #D97706; font-weight: 700; border: none; padding: 5px 10px; border-radius: 6px;">Pending review</span>
+
+                {# Ageing indicator: shows how long this cluster has been waiting
+                   for an admin verdict. Color escalates with neglect:
+                     <2 days  → muted gray (fresh)
+                     2-6 days → amber  (getting old)
+                     7+ days  → red    (urgent)
+                   This nudges admins to clear out old pending items rather
+                   than letting clusters rot in limbo. #}
+                {% set days_pending = ((now_utc() - cluster.created_at).total_seconds() / 86400) | int %}
+                {% if days_pending < 2 %}
+                    {% set age_color = '#9CA3AF' %}{% set age_bg = '#F3F4F6' %}
+                {% elif days_pending < 7 %}
+                    {% set age_color = '#D97706' %}{% set age_bg = '#FEF3C7' %}
+                {% else %}
+                    {% set age_color = '#DC2626' %}{% set age_bg = '#FEE2E2' %}
+                {% endif %}
+                <span class="badge" style="background-color: {{ age_bg }}; color: {{ age_color }}; font-weight: 600; border: none; padding: 5px 10px; border-radius: 6px;" title="Cluster created {{ cluster.created_at.strftime('%d.%m.%Y') }}">
+                    {% if days_pending == 0 %}⏱ Today
+                    {% elif days_pending == 1 %}⏱ 1 day
+                    {% else %}⏱ {{ days_pending }} days
+                    {% endif %}
+                </span>
+
+                {# Recurrence warning: this cluster contains pairs that admins
+                   previously rejected. Strong signal to take a careful look
+                   rather than auto-approving. Only shown for pending. #}
+                {% if cluster.feedback_recurrence is defined and cluster.feedback_recurrence and cluster.feedback_recurrence > 0 %}
+                    <span class="badge" style="background-color: #FEE2E2; color: #B91C1C; font-weight: 600; border: none; padding: 5px 10px; border-radius: 6px;" title="This cluster contains property pairs that have been previously rejected as not-duplicates by admins. Re-evaluate carefully.">
+                        ⚠️ Recurring{% if cluster.feedback_recurrence > 1 %} (×{{ cluster.feedback_recurrence }}){% endif %}
+                    </span>
+                {% endif %}
+            {% else %}
+                <span class="badge cluster-status-badge" style="background: #DCFCE7; color: #059669; font-weight: 700; border: none; padding: 5px 10px; border-radius: 6px;">Approved</span>
+            {% endif %}
+
+            {# Delisted badge — показывается только если ни один member не активен #}
+            {% if all_delisted %}
+                <span class="badge" style="background-color: #F3F4F6; color: #4B5563; font-weight: 700; border: none; padding: 5px 10px; border-radius: 6px;" title="All properties in this cluster are currently inactive on their source sites">
+                    🪦 Delisted
+                </span>
+            {% endif %}
+        </div>
+
+        <!-- ЦЕНТР: Мета-информация -->
+        <div class="d-flex align-items-center text-muted fw-medium" style="font-size: 13px;">
+            <span>📑 {{ cluster.member_count }} member(s)</span>
+
+            {% if cluster.ai_score is not none %}
+                <div style="height: 14px; width: 1px; background-color: #e5e7eb; margin: 0 15px;"></div>
+                <span>🤖 Текст: {{ (cluster.ai_score * 100) | round(1) }}%</span>
+            {% endif %}
+
+            <div style="height: 14px; width: 1px; background-color: #e5e7eb; margin: 0 15px;"></div>
+            {% if cluster.phash_matches and cluster.phash_matches > 0 %}
+                <span class="text-success fw-bold">🖼️ Фото: {{ cluster.phash_matches }} совпадений</span>
+            {% else %}
+                <span>🖼️ Фото: 0 совпадений</span>
+            {% endif %}
+        </div>
+
+        <!-- ПРАВАЯ ЧАСТЬ: Кнопки действий (Soft Hover) -->
+        <div class="d-flex gap-2">
+            {% if cluster.status.value == 'APPROVED' or cluster.status == 'APPROVED' %}
+                <button class="btn-soft-danger fw-bold shadow-none" onclick="handleClusterVerdict('{{ cluster.id }}', 'reject', this)">
+                    Dissolve Group
+                </button>
+            {% else %}
+                <button class="btn-soft-success fw-bold shadow-none" onclick="handleClusterVerdict('{{ cluster.id }}', 'approve', this)">
+                    Approve
+                </button>
+                <button class="btn-soft-danger fw-bold shadow-none" onclick="handleClusterVerdict('{{ cluster.id }}', 'reject', this)">
+                    Reject
+                </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Таблица объектов -->
+    <div class="table-responsive">
+        <table class="table table-borderless mb-0 table-custom" style="table-layout: fixed; width: 100%;">
+            <thead style="background:#fdfdfd; border-bottom: 1px solid #f3f4f6;">
+                <tr>
+                    <th style="width: 75px; padding-left: 20px;">Photo</th>
+                    <th style="width: 25%;">Source</th>
+                    <th style="width: 22%;">Area</th>
+                    <th style="width: 17%;">Type</th>
+                    <th style="width: 10%;">Size</th>
+                    <th style="width: 14%;">Price</th>
+                    <th style="width: 45px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for prop in cluster.members %}
+                <tr class="clickable-row {% if not prop.is_active %}text-muted{% endif %}" onclick="window.open('/property/{{ prop.id }}', '_blank')">
+                    <td style="padding-left:20px;">
+                        {% if prop.media %}
+                            <img src="/{{ prop.media[0].local_file_path | fix_path }}" class="admin-thumb" alt="thumb" style="border-radius: 4px; border: 1px solid #eee; {% if not prop.is_active %}opacity: 0.5;{% endif %}">
+                        {% else %}
+                            <div class="admin-thumb-empty" style="border-radius: 4px;">N/A</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="fw-bold text-dark text-truncate" title="{{ prop.source_domain }}">{{ prop.source_domain }}</div>
+                        <div class="small text-muted">
+                            ID: {{ prop.site_property_id }}
+                            {% if not prop.is_active %} · <span style="color:#9ca3af;">delisted</span>{% endif %}
+                        </div>
+                    </td>
+                    <td class="text-truncate text-muted fw-medium">{{ prop.calc_municipality or prop.area or '—' }}</td>
+                    <td class="text-truncate text-muted fw-medium">{{ prop.category or '—' }}</td>
+                    <td class="text-nowrap text-muted fw-medium">{% if prop.size_sqm %}{{ prop.size_sqm|int }} m²{% else %}—{% endif %}</td>
+                    <td class="fw-bold text-dark text-nowrap">{{ prop.price | euro }}</td>
+
+                    <td class="text-end pe-3">
+                        {# Trash icon now shown for BOTH pending and approved clusters.
+                           The backend endpoint already handles either status correctly,
+                           so admin can surgically remove a misclassified property even
+                           after the cluster was approved. #}
+                        <button type="button" class="btn btn-sm shadow-none p-1 text-muted" style="border: none; background: transparent;" title="Remove from cluster" onclick="removeProp('{{ cluster.id }}', '{{ prop.id }}', this, event)">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition: stroke 0.2s;" onmouseover="this.style.stroke='#ff385c'" onmouseout="this.style.stroke='currentColor'">
+                                <polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>

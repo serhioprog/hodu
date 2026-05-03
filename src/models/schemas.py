@@ -7,6 +7,7 @@ class PropertyTemplate(BaseModel): # Это и есть наш "Шаблон"
     site_property_id: str
     source_domain: str
     url: str
+    levels: str | None = None
     
     # Поля недвижимости (Все Optional, чтобы скрипт не падал, если чего-то нет)
     price: Optional[int] = None
@@ -19,7 +20,6 @@ class PropertyTemplate(BaseModel): # Это и есть наш "Шаблон"
     area: Optional[str] = None
     subarea: Optional[str] = None
     category: Optional[str] = None
-    levels: Optional[str] = None
     description: Optional[str] = ""
     latitude: Optional[float] = None
     longitude: Optional[float] = None
@@ -36,37 +36,46 @@ class PropertyTemplate(BaseModel): # Это и есть наш "Шаблон"
     # Новое поле для любых дополнительных характеристик в виде словаря (например, терраса, бассейн, вид на море и т.д.)
     extra_features: dict = {}
 
+    #Переводим уровни в строку, чтобы избежать проблем с разными форматами----------------------------
+    @field_validator('levels', mode='before')
+    @classmethod
+    def ensure_string(cls, v):
+        if v is None: return None
+        return str(v) # Автоматически превратит 3 в "3" до сохранения
+    #Переводим уровни в строку, чтобы избежать проблем с разными форматами----------------------------
+
     # ЛОГИКА ФИЛЬТРАЦИИ (Чистим данные прямо при заполнении шаблона)-----------
-    
     @field_validator('price', mode='before')
+    @classmethod
     def clean_price(cls, v):
         if not v: return None
-        if isinstance(v, int): return v
+        if isinstance(v, (int, float)): return int(v)
         
-        # Превращаем '1.100.000€ 1.000.000€' в '1.100.000 1.000.000'
-        text = str(v).replace('€', '').replace('£', '').replace('$', '')
+        # Удаляем символы валют и ПРОБЕЛЫ (чтобы 1 500 000 склеилось в 1500000)
+        text = str(v).replace('€', '').replace('£', '').replace('$', '').replace(' ', '')
         
-        # Ищем все группы цифр (с точками или запятыми)
-        # Например: ['1.100.000', '1.000.000']
         prices = re.findall(r'[\d.,]+', text)
         
         if not prices: 
             return None
             
-        # --- БРОНЕЖИЛЕТ ОТ МУСОРА ---
         valid_prices = []
         for p in prices:
-            # Удаляем точки и запятые, чтобы получить чистое число
+            p = p.strip()
+            
+            # 🔥 ИСПРАВЛЕНИЕ: Сначала отсекаем копейки (ровно 1 или 2 цифры после точки/запятой в конце)
+            # Например: '1.400.000,00' -> '1.400.000'
+            p = re.sub(r'[.,]\d{1,2}$', '', p)
+            
+            # Теперь безопасно удаляем оставшиеся разделители тысяч
             clean_num_str = re.sub(r'[^\d]', '', p)
+            
             if clean_num_str:
                 num = int(clean_num_str)
-                # Отсеиваем мусор: цена виллы не может быть меньше 1000 евро
                 if num > 1000:
                     valid_prices.append(num)
                     
-        # Если после фильтрации остались адекватные цены
         if valid_prices:
-            # Берем ПОСЛЕДНЮЮ валидную цену
             return valid_prices[-1]
             
         return None
@@ -100,3 +109,5 @@ class PropertyTemplate(BaseModel): # Это и есть наш "Шаблон"
             return float(clean_v)
         except ValueError:
             return None
+        
+        

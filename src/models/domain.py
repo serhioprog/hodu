@@ -1,227 +1,447 @@
-import uuid
-from sqlalchemy.dialects.postgresql import JSONB
-from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, Float, Text, Boolean, DateTime, ForeignKey, Enum, BigInteger
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+"""
+ORM domain models for Hodu Real Estate.
+
+Single source of truth for DB schema. DDL for special types (pgvector,
+HNSW, enums) lives in src/migrations/*.sql — create_type=False here.
+
+UTC contract:
+  * utcnow() returns aware UTC datetime.
+  * All DateTime columns are timezone=True; asyncpg roundtrips them as UTC.
+  * Code comparing timestamps must use datetime.now(timezone.utc) — never
+    datetime.now() (which returns naive local time and silently breaks
+    cooldown / TTL / freshness checks).
+"""
 import enum
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import (
+    ARRAY, Boolean, Column, DateTime, Float,
+    ForeignKey, Integer, String, Text, UniqueConstraint,
+    Enum as SAEnum,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import relationship
+from pgvector.sqlalchemy import Vector
 
 from src.database.db import Base
-from sqlalchemy import UniqueConstraint
 
-def utcnow():
-    return datetime.now(timezone.utc)
+
+# =============================================================
+# ENUMS
+# =============================================================
 
 class PropertyStatus(str, enum.Enum):
-    PRICE_CHANGED = "PRICE_CHANGED"
     NEW = "NEW"
     ACTIVE = "ACTIVE"
+    PRICE_CHANGED = "PRICE_CHANGED"
     DELISTED = "DELISTED"
     SOLD = "SOLD"
+
+
+class ClusterStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
+def utcnow() -> datetime:
+    """Aware UTC datetime. NEVER use datetime.now() (naive, local TZ)."""
+    return datetime.now(timezone.utc)
+
+
+# =============================================================
+# CLUSTER
+# =============================================================
+
+class PropertyCluster(Base):
+    __tablename__ = "property_clusters"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    status = Column(
+        SAEnum(ClusterStatus, name="cluster_status", create_type=False),
+        nullable=False,
+        default=ClusterStatus.PENDING,
+        index=True,
+    )
+
+    member_count = Column(Integer, nullable=False, default=0)
+
+    # --- Admin manual override ------------------------------------
+    # When True, InternalDuplicateDetector MUST NOT touch `status`.
+    # Note: REJECTED clusters are NEVER locked — they get dissolved entirely
+    # (members detached, cluster deleted) by the reject endpoint.
+    verdict_locked = Column(Boolean, nullable=False, default=False)
+    verdict_locked_at = Column(DateTime(timezone=True), nullable=True)
+    verdict_locked_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("agents.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # --- External uniqueness audit trail -------------------------
+    last_external_is_unique = Column(Boolean, nullable=True)
+    last_external_check_at  = Column(DateTime(timezone=True), nullable=True)
+    power_generated_at      = Column(DateTime(timezone=True), nullable=True)
+
+    # --- AI analytics fields (added in migration 005) -------------
+    # ai_score:      max embedding similarity among edges connecting members
+    # phash_matches: max pHash photo matches among edges connecting members
+    ai_score      = Column(Float,   nullable=True)
+    phash_matches = Column(Integer, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    members = relationship(
+        "Property",
+        back_populates="cluster",
+        foreign_keys="Property.cluster_id",
+    )
+    power_object = relationship(
+        "PowerProperty",
+        back_populates="cluster",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+
+# =============================================================
+# CORE DOMAIN: Property, Media, PriceHistory
+# =============================================================
 
 class Property(Base):
     __tablename__ = "properties"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    site_property_id = Column(String(50), index=True, nullable=False)
-    source_domain = Column(String(100), nullable=False)
-    url = Column(String(500), unique=True, nullable=False)
+    id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    site_property_id = Column(String(255),  index=True, nullable=False)
+    source_domain    = Column(String(100), nullable=False)
+    url              = Column(String(500), unique=True, nullable=False)
 
-    price = Column(Integer, nullable=True)
+    # --- Facts ----------------------------------------------------
+    price          = Column(Integer, nullable=True)
     previous_price = Column(Integer, nullable=True)
-    size_sqm = Column(Float, nullable=True)
-    land_size_sqm = Column(Float, nullable=True)
-    bedrooms = Column(Integer, nullable=True)
-    bathrooms = Column(Integer, nullable=True)
-    year_built = Column(Integer, nullable=True)
-    
-    area = Column(String, nullable=True)
-    subarea = Column(String, nullable=True)
-    category = Column(String, nullable=True)
-    levels = Column(String, nullable=True)
-    description = Column(Text, nullable=True)
-    site_last_updated = Column(String, nullable=True)
-    
-    location_raw = Column(String(255), nullable=True)
-    latitude = Column(Float, nullable=True)
-    longitude = Column(Float, nullable=True)
-    
-    status = Column(String, default=PropertyStatus.NEW.value, index=True)
+    size_sqm       = Column(Float,   nullable=True)
+    land_size_sqm  = Column(Float,   nullable=True)
+    bedrooms       = Column(Integer, nullable=True)
+    bathrooms      = Column(Integer, nullable=True)
+    year_built     = Column(Integer, nullable=True)
+
+    area      = Column(String, nullable=True)
+    subarea   = Column(String, nullable=True)
+    category  = Column(String, nullable=True)
+    levels    = Column(String, nullable=True)
+
+    description       = Column(Text,         nullable=True)
+    site_last_updated = Column(String,       nullable=True)
+    location_raw      = Column(String(255),  nullable=True)
+    latitude          = Column(Float,        nullable=True)
+    longitude         = Column(Float,        nullable=True)
+
+    # --- Status (ENUM type in DB, created by migration) ----------
+    status = Column(
+        SAEnum(PropertyStatus, name="property_status", create_type=False),
+        nullable=False,
+        default=PropertyStatus.NEW,
+        index=True,
+    )
     is_active = Column(Boolean, default=True, index=True)
-    extra_features = Column(JSONB, nullable=True, default=dict)
 
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-    last_checked_at = Column(DateTime(timezone=True), default=utcnow)
-    last_seen_at = Column(DateTime(timezone=True), default=utcnow)
+    extra_features = Column(JSONB, nullable=True, default=dict, server_default="{}")
 
-    media = relationship("Media", back_populates="property", cascade="all, delete-orphan")
-    price_history = relationship("PriceHistory", back_populates="property", cascade="all, delete-orphan")
-    
-    # 🔥 ИСПРАВЛЕНО: Ссылаемся на правильную таблицу
-    location_id = Column(Integer, ForeignKey("sdht_property_areas.id"), nullable=True)
-    calc_prefecture = Column(String(255), nullable=True)
+    # --- Timestamps (all UTC via utcnow()) ----------------------
+    created_at      = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at      = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+    last_checked_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    last_seen_at    = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    # --- Lifecycle: details re-fetch cooldown --------------------
+    details_fetch_attempts = Column(Integer, nullable=False, default=0, server_default="0")
+    last_details_fetch_at  = Column(DateTime(timezone=True), nullable=True)
+
+    # --- Location FK (Sdht hierarchy) ----------------------------
+    location_id       = Column(Integer, ForeignKey("sdht_property_areas.id"), nullable=True)
+    calc_prefecture   = Column(String(255), nullable=True)
     calc_municipality = Column(String(255), nullable=True)
-    calc_area = Column(String(255), nullable=True)
-    
+    calc_area         = Column(String(255), nullable=True)
+
+    # --- MDM / AI ------------------------------------------------
+    embedding     = Column(Vector(1536), nullable=True)
+    content_hash  = Column(String(64),   nullable=True, index=True)
+    cluster_id    = Column(
+        UUID(as_uuid=True),
+        ForeignKey("property_clusters.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    image_phashes = Column(ARRAY(String), nullable=False, default=list, server_default="{}")
+
+    # --- Relationships -------------------------------------------
+    media         = relationship("Media",        back_populates="property", cascade="all, delete-orphan")
+    price_history = relationship("PriceHistory", back_populates="property", cascade="all, delete-orphan")
+    cluster       = relationship(
+        "PropertyCluster",
+        back_populates="members",
+        foreign_keys=[cluster_id],
+    )
+
     __table_args__ = (
         UniqueConstraint('source_domain', 'site_property_id', name='_source_site_uc'),
     )
 
+
 class Media(Base):
     __tablename__ = "media"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    property_id = Column(UUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"))
-    image_url = Column(String(1000), nullable=False)
-    local_file_path = Column(String(500), nullable=True)
-    is_main_photo = Column(Boolean, default=False)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    property_id     = Column(UUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"))
+    image_url       = Column(String(1000), nullable=False)
+    local_file_path = Column(String(500),  nullable=True)
+    is_main_photo   = Column(Boolean,       default=False)
+    created_at      = Column(DateTime(timezone=True), default=utcnow)
+
     property = relationship("Property", back_populates="media")
+
 
 class PriceHistory(Base):
     __tablename__ = "price_history"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     property_id = Column(UUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"))
-    old_price = Column(Integer, nullable=True)
-    new_price = Column(Integer, nullable=False)
-    changed_at = Column(DateTime(timezone=True), default=utcnow)
+    old_price   = Column(Integer, nullable=True)
+    new_price   = Column(Integer, nullable=False)
+    changed_at  = Column(DateTime(timezone=True), default=utcnow)
+
     property = relationship("Property", back_populates="price_history")
 
-# ==========================================
-# НОВЫЙ БЛОК ЛОКАЦИЙ (Полностью совпадает с SQL дампами)
-# ==========================================
+
+# =============================================================
+# LOCATION DICTIONARY (Sdht_* — imported from external SQL dumps)
+# =============================================================
 
 class SdhtPrefecture(Base):
     __tablename__ = "sdht_property_prefectures"
 
-    id = Column(Integer, primary_key=True)
+    id                   = Column(Integer, primary_key=True)
     geometry_location_id = Column(Integer, nullable=True)
-    country_id = Column(Integer, nullable=True)
-    prefecture_en = Column(String(255), nullable=True)
-    prefecture_el = Column(String(255), nullable=True)
-    lat = Column(String(100), nullable=True)
-    lng = Column(String(100), nullable=True)
-    zoom = Column(Integer, nullable=True)
-    created_at = Column(String(100), nullable=True)
-    updated_at = Column(String(100), nullable=True)
-    # Эти колонки просил SQL:
-    active = Column(Integer, nullable=True)
-    deleted = Column(Integer, nullable=True)
+    country_id           = Column(Integer, nullable=True)
+    prefecture_en        = Column(String(255), nullable=True)
+    prefecture_el        = Column(String(255), nullable=True)
+    lat                  = Column(String(100), nullable=True)
+    lng                  = Column(String(100), nullable=True)
+    zoom                 = Column(Integer, nullable=True)
+    created_at           = Column(String(100), nullable=True)
+    updated_at           = Column(String(100), nullable=True)
+    active               = Column(Integer, nullable=True)
+    deleted              = Column(Integer, nullable=True)
+
 
 class SdhtMunicipality(Base):
     __tablename__ = "sdht_property_municipalities"
 
-    id = Column(Integer, primary_key=True)
-    country_id = Column(Integer, nullable=True)
-    prefecture_id = Column(Integer, ForeignKey("sdht_property_prefectures.id"), nullable=True)
+    id                   = Column(Integer, primary_key=True)
+    country_id           = Column(Integer, nullable=True)
+    prefecture_id        = Column(Integer, ForeignKey("sdht_property_prefectures.id"), nullable=True)
     geometry_location_id = Column(Integer, nullable=True)
-    municipality_en = Column(String(255), nullable=True)
-    municipality_el = Column(String(255), nullable=True)
-    lat = Column(String(100), nullable=True)
-    lng = Column(String(100), nullable=True)
-    zoom = Column(Integer, nullable=True)
-    # Эти колонки просил SQL:
-    dom_city_id = Column(Integer, nullable=True)
-    xe_city_id = Column(Integer, nullable=True)
-    fer_city_id = Column(Integer, nullable=True)
-    created_at = Column(String(100), nullable=True)
-    updated_at = Column(String(100), nullable=True)
-    active = Column(Integer, nullable=True)
-    deleted = Column(Integer, nullable=True)
+    municipality_en      = Column(String(255), nullable=True)
+    municipality_el      = Column(String(255), nullable=True)
+    lat                  = Column(String(100), nullable=True)
+    lng                  = Column(String(100), nullable=True)
+    zoom                 = Column(Integer, nullable=True)
+    dom_city_id          = Column(Integer, nullable=True)
+    xe_city_id           = Column(Integer, nullable=True)
+    fer_city_id          = Column(Integer, nullable=True)
+    created_at           = Column(String(100), nullable=True)
+    updated_at           = Column(String(100), nullable=True)
+    active               = Column(Integer, nullable=True)
+    deleted              = Column(Integer, nullable=True)
+
 
 class SdhtArea(Base):
     __tablename__ = "sdht_property_areas"
 
-    id = Column(Integer, primary_key=True)
-    country_id = Column(Integer, nullable=True)
-    prefecture_id = Column(Integer, ForeignKey("sdht_property_prefectures.id"), nullable=True)
-    municipality_id = Column(Integer, ForeignKey("sdht_property_municipalities.id"), nullable=True)
-    area_en = Column(String(255), nullable=True)
-    area_el = Column(String(255), nullable=True)
-    lat = Column(String(100), nullable=True)
-    lng = Column(String(100), nullable=True)
-    zoom = Column(Integer, nullable=True)
-    # Эти колонки просил SQL (geometric_location - это длинный текст с массивами PHP):
-    geometric_location = Column(Text, nullable=True)
-    pref_sp_id = Column(String(255), nullable=True)
-    mun_sp_id = Column(String(255), nullable=True)
-    area_sp_id = Column(String(255), nullable=True)
-    area_xe_id = Column(String(255), nullable=True)
-    postal = Column(String(255), nullable=True)
+    id                      = Column(Integer, primary_key=True)
+    country_id              = Column(Integer, nullable=True)
+    prefecture_id           = Column(Integer, ForeignKey("sdht_property_prefectures.id"), nullable=True)
+    municipality_id         = Column(Integer, ForeignKey("sdht_property_municipalities.id"), nullable=True)
+    area_en                 = Column(String(255), nullable=True)
+    area_el                 = Column(String(255), nullable=True)
+    lat                     = Column(String(100), nullable=True)
+    lng                     = Column(String(100), nullable=True)
+    zoom                    = Column(Integer, nullable=True)
+    geometric_location      = Column(Text,         nullable=True)
+    pref_sp_id              = Column(String(255), nullable=True)
+    mun_sp_id               = Column(String(255), nullable=True)
+    area_sp_id              = Column(String(255), nullable=True)
+    area_xe_id              = Column(String(255), nullable=True)
+    postal                  = Column(String(255), nullable=True)
     mortgage_office_type_id = Column(String(255), nullable=True)
-    created_at = Column(String(100), nullable=True)
-    updated_at = Column(String(100), nullable=True)
-    active = Column(Integer, nullable=True)
-    deleted = Column(Integer, nullable=True)
+    created_at              = Column(String(100), nullable=True)
+    updated_at              = Column(String(100), nullable=True)
+    active                  = Column(Integer, nullable=True)
+    deleted                 = Column(Integer, nullable=True)
 
-    # ==========================================
-# НОВЫЙ БЛОК: СИСТЕМА B2B ДОСТУПА (АГЕНТЫ И ТОКЕНЫ)
-# ==========================================
+
+# =============================================================
+# B2B ACCESS: Agents, Devices, Tokens, Settings
+# =============================================================
 
 class Agent(Base):
-    """Таблица клиентов (Агентов по недвижимости)"""
     __tablename__ = "agents"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String(255), nullable=False)
-    email = Column(String(255), unique=True, index=True, nullable=False)
-    phone = Column(String(50), nullable=True)  # Для будущих SMS
-    
-    # Главный рубильник: если False, агент не получит письмо и не зайдет на сайт
-    is_active = Column(Boolean, default=True) 
-    is_admin = Column(Boolean, default=False)
-
+    id        = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name      = Column(String(255), nullable=False)
+    email     = Column(String(255), unique=True, index=True, nullable=False)
+    phone     = Column(String(50),  nullable=True)
+    is_active = Column(Boolean,     default=True)
+    is_admin  = Column(Boolean,     default=False)
     created_at = Column(DateTime(timezone=True), default=utcnow)
-    
-    # Связи
-    devices = relationship("AgentDevice", back_populates="agent", cascade="all, delete-orphan")
-    tokens = relationship("AuthToken", back_populates="agent", cascade="all, delete-orphan")
 
-class SystemSetting(Base):
-    """Таблица для хранения настроек (время парсинга, время рассылки)"""
-    __tablename__ = "system_settings"
-    
-    id = Column(Integer, primary_key=True)
-    key = Column(String(50), unique=True, index=True) # 'sync_time' или 'report_time'
-    value = Column(String(100)) # Например, '00:01'
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    devices = relationship("AgentDevice", back_populates="agent", cascade="all, delete-orphan")
+    tokens  = relationship("AuthToken",   back_populates="agent", cascade="all, delete-orphan")
+
 
 class AgentDevice(Base):
-    """Таблица 'подписанных' браузеров агентов (Cookie)"""
     __tablename__ = "agent_devices"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    agent_id = Column(UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
-    
-    # То самое длинное значение Cookie, которое мы положим агенту в браузер
-    device_cookie = Column(String(255), unique=True, index=True, nullable=False)
-    
-    # Инфа о браузере, чтобы ты видел, откуда он заходил (например, "Safari on iPhone")
-    user_agent_str = Column(String(500), nullable=True) 
-    
-    last_seen_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    
+    id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    agent_id       = Column(UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
+    device_cookie  = Column(String(255), unique=True, index=True, nullable=False)
+    user_agent_str = Column(String(500), nullable=True)
+    last_seen_at   = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at     = Column(DateTime(timezone=True), default=utcnow)
+
     agent = relationship("Agent", back_populates="devices")
 
 
 class AuthToken(Base):
-    """Таблица Магических Ссылок (и OTP кодов)"""
     __tablename__ = "auth_tokens"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    agent_id = Column(UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
-    
-    # Это либо длинный токен для ссылки (xY7z9P...), либо 4 цифры для SMS
-    token = Column(String(255), unique=True, index=True, nullable=False)
-    
-    # Если True, значит по ссылке уже кликнули. Второй раз она не сработает.
-    is_used = Column(Boolean, default=False)
-    
-    # Когда истекает срок действия (например, через 24 часа)
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    agent_id   = Column(UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
+    token      = Column(String(255), unique=True, index=True, nullable=False)
+    is_used    = Column(Boolean, default=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), default=utcnow)
-    
+
     agent = relationship("Agent", back_populates="tokens")
+
+
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+
+    id         = Column(Integer, primary_key=True)
+    key        = Column(String(50), unique=True, index=True)
+    value      = Column(String(100))
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+# =============================================================
+# MDM: External cache + PowerProperty master record
+# =============================================================
+
+class ExternalPropertyCache(Base):
+    __tablename__ = "external_property_cache"
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    external_source = Column(String(100), nullable=False)
+    external_id     = Column(String(255), nullable=False)
+    canonical_text  = Column(Text,        nullable=False)
+    content_hash    = Column(String(64),  nullable=False, index=True)
+    embedding       = Column(Vector(1536), nullable=True)
+    raw_payload     = Column(JSONB,       nullable=False)
+    expires_at      = Column(DateTime(timezone=True), nullable=False, index=True)
+    created_at      = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('external_source', 'external_id', name='_ext_source_id_uc'),
+    )
+
+
+class PowerProperty(Base):
+    __tablename__ = "power_properties"
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    cluster_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("property_clusters.id", ondelete="CASCADE"),
+        nullable=False, unique=True,
+    )
+
+    description = Column(Text, nullable=False)
+    features    = Column(JSONB, nullable=False, default=dict, server_default="{}")
+
+    price         = Column(Integer, nullable=True, index=True)
+    size_sqm      = Column(Float,   nullable=True)
+    land_size_sqm = Column(Float,   nullable=True)
+    bedrooms      = Column(Integer, nullable=True)
+    bathrooms     = Column(Integer, nullable=True)
+    year_built    = Column(Integer, nullable=True)
+    category      = Column(String(100), nullable=True, index=True)
+
+    calc_prefecture   = Column(String(255), nullable=True)
+    calc_municipality = Column(String(255), nullable=True, index=True)
+    calc_area         = Column(String(255), nullable=True)
+    latitude          = Column(Float, nullable=True)
+    longitude         = Column(Float, nullable=True)
+
+    image_urls        = Column(ARRAY(String), nullable=False, default=list, server_default="{}")
+    image_local_paths = Column(ARRAY(String), nullable=False, default=list, server_default="{}")
+
+    # Added in migration 005. Filled by external image enhancer (n8n webhook).
+    # Empty list means: enhancer was disabled or failed; UI should fall back
+    # to image_urls / image_local_paths.
+    enhanced_media_urls = Column(ARRAY(String), nullable=False, default=list, server_default="{}")
+
+    source_property_ids = Column(ARRAY(UUID(as_uuid=True)), nullable=False, default=list, server_default="{}")
+    source_domains      = Column(ARRAY(String),             nullable=False, default=list, server_default="{}")
+
+    generated_at   = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    regenerated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    cluster = relationship("PropertyCluster", back_populates="power_object")
+
+
+class AIDuplicateFeedback(Base):
+    __tablename__ = "ai_duplicate_feedbacks"
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    prop_a_id  = Column(UUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"), nullable=False, index=True)
+    prop_b_id  = Column(UUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"), nullable=False, index=True)
+    hash_a     = Column(String(64), nullable=False)
+    hash_b     = Column(String(64), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('prop_a_id', 'prop_b_id', name='uix_ai_feedback_pair'),
+    )
+
+
+# =============================================================
+# Operational Logs: Scrapers & Emails
+# =============================================================
+
+class ScraperLog(Base):
+    __tablename__ = "scraper_logs"
+
+    id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_domain    = Column(String(100), nullable=False, index=True)
+    status           = Column(String(50), nullable=False)  # 'SUCCESS' | 'ERROR' | 'RUNNING'
+    processed_count  = Column(Integer, default=0)
+    new_count        = Column(Integer, default=0)
+    duration_seconds = Column(Integer, nullable=True)
+    error_message    = Column(Text, nullable=True)
+    created_at       = Column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class EmailLog(Base):
+    __tablename__ = "email_logs"
+
+    id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    recipient_email  = Column(String(255), nullable=False, index=True)
+    status           = Column(String(50), nullable=False)  # 'DELIVERED' | 'FAILED' | 'NO NEW DATA'
+    properties_count = Column(Integer, default=0)
+    error_message    = Column(Text, nullable=True)
+    created_at       = Column(DateTime(timezone=True), default=utcnow, index=True)
