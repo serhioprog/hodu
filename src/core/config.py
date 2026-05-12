@@ -74,6 +74,17 @@ class Settings(BaseSettings):
     """Minimum confidence for Vision verdict to be authoritative.
     Below this threshold, the pair stays in PENDING (admin decides)."""
 
+    # === ENGINE V2 (Pass 6 shadow phase) ============================
+    USE_NEW_DUPLICATE_ENGINE: bool = False
+    """Phase 1 shadow-mode toggle for engine v2.
+    When True, daily_sync._run_mdm_pipeline() runs the new HybridEngine
+    BEFORE the old InternalDuplicateDetector on a separate session.
+    New engine writes only engine_v2_predictions + engine_pair_cache;
+    no property_clusters writes. Old engine continues unchanged.
+    Failures in the shadow branch are logged with traceback but never
+    block the production pipeline.
+    Set in .env: USE_NEW_DUPLICATE_ENGINE=true to enable."""
+
     # === INTERNAL MATCHER THRESHOLDS ================================
     SIM_AUTO_MERGE: float = 0.985
     SIM_REJECT: float = 0.920

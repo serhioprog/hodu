@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     ARRAY, Boolean, Column, DateTime, Float,
-    ForeignKey, Integer, String, Text, UniqueConstraint,
+    ForeignKey, Integer, Numeric, SmallInteger, String, Text, UniqueConstraint,
     Enum as SAEnum,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -84,6 +84,7 @@ class PropertyCluster(Base):
     last_external_is_unique = Column(Boolean, nullable=True)
     last_external_check_at  = Column(DateTime(timezone=True), nullable=True)
     power_generated_at      = Column(DateTime(timezone=True), nullable=True)
+    notes                   = Column(Text, nullable=True)
 
     # --- AI analytics fields (added in migration 005) -------------
     # ai_score:      max embedding similarity among edges connecting members
@@ -445,3 +446,133 @@ class EmailLog(Base):
     properties_count = Column(Integer, default=0)
     error_message    = Column(Text, nullable=True)
     created_at       = Column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+# =============================================================
+# Engine v2 (Pass 6) — Cache + Mismerge flags
+# =============================================================
+
+class EnginePairCache(Base):
+    """Per-pair scoring cache for engine v2.
+
+    Source: RESEARCH.md §12.5.7 + research/HYBRID_DESIGN.md §4.2.
+    Migration: 011_engine_pair_cache.sql.
+
+    Cache key is `pair_key` (canonical "lower_uuid:greater_uuid").
+    Invalidation triggers:
+      1. Either property's content_hash changes (description / price /
+         etc. updated by re-scrape) -> cache row is stale if stored
+         hashes don't match current. Engine recomputes.
+      2. engine_version mismatch -> entire cache effectively
+         invalidated for the older version.
+      3. Optional TTL — default NULL (no expiry).
+
+    No FK to properties — verbatim HYBRID_DESIGN spec. Orphan rows
+    are harmless (next lookup invalidates via content_hash mismatch).
+    """
+    __tablename__ = "engine_pair_cache"
+
+    pair_key       = Column(Text,            primary_key=True)
+    engine_version = Column(Text,            nullable=False, index=True)
+    a_content_hash = Column(Text,            nullable=False)
+    b_content_hash = Column(Text,            nullable=False)
+    verdict        = Column(Text,            nullable=False)   # duplicate | different | uncertain
+    confidence     = Column(Float,           nullable=True)
+    reasoning      = Column(Text,            nullable=True)
+    tier_emitted   = Column(SmallInteger,    nullable=False)   # 0 | 1 | 2 | 3
+    cost_usd       = Column(Numeric(10, 6),  nullable=False, default=0)
+    scored_at      = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    expires_at     = Column(DateTime(timezone=True), nullable=True)
+
+
+class MismergeFlag(Base):
+    """Engine-emitted flag for pairs in APPROVED clusters that
+    violate hard rules. Engine flags but NEVER auto-dissolves
+    (spec §11). Admin reviews and sets admin_action.
+
+    Source: RESEARCH.md §12.5.9 (multi_cluster_bridge) + §12.5.11.
+    Migration: 012_mismerge_flags.sql.
+
+    flag_type values: 'year_diff_outlier' | 'engine_t0_disagrees' |
+                      'multi_cluster_bridge' | 'pattern'.
+    admin_action values: 'confirm_keep' | 'dissolve' | 'ignore' |
+                         NULL (pending).
+
+    UNIQUE(cluster_id, pair_a_id, pair_b_id, flag_type) makes
+    repeated detection idempotent — pending flags don't re-emit.
+    """
+    __tablename__ = "mismerge_flags"
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    cluster_id      = Column(
+        UUID(as_uuid=True),
+        ForeignKey("property_clusters.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    pair_a_id       = Column(
+        UUID(as_uuid=True),
+        ForeignKey("properties.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    pair_b_id       = Column(
+        UUID(as_uuid=True),
+        ForeignKey("properties.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    flag_type       = Column(Text,        nullable=False)
+    flag_reason     = Column(Text,        nullable=False)
+    detected_at     = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    admin_action    = Column(Text,        nullable=True)
+    admin_action_at = Column(DateTime(timezone=True), nullable=True)
+    admin_action_by = Column(Text,        nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "cluster_id", "pair_a_id", "pair_b_id", "flag_type",
+            name="uix_mismerge_flag_pair",
+        ),
+    )
+
+
+class EngineV2Prediction(Base):
+    """Phase 1-2 shadow-mode output for engine v2.
+
+    Source: RESEARCH.md §12.5.7 (table #4) + §12.5.10 (write site).
+    Migration: 013_engine_v2_predictions.sql.
+
+    During shadow phase the new engine writes only here; the old engine
+    continues to own property_clusters. Diff between this table and
+    property_clusters drives daily Telegram comparison until Phase 3
+    cut-over, after which this table is dropped.
+
+    UNIQUE(pair_key, scored_at) preserves prediction history per pair
+    across scrape runs — supports drift analysis over time.
+    """
+    __tablename__ = "engine_v2_predictions"
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    pair_key      = Column(Text,            nullable=False)            # "lower_uuid:greater_uuid"
+    a_id          = Column(
+        UUID(as_uuid=True),
+        ForeignKey("properties.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    b_id          = Column(
+        UUID(as_uuid=True),
+        ForeignKey("properties.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    verdict       = Column(Text,            nullable=False)            # duplicate | different | uncertain
+    confidence    = Column(Float,           nullable=True)
+    reasoning     = Column(Text,            nullable=True)
+    tier_emitted  = Column(SmallInteger,    nullable=False)            # 0 | 1 | 2 | 3
+    cost_usd      = Column(Numeric(10, 6),  nullable=False, default=0)
+    scored_at     = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "pair_key", "scored_at",
+            name="uix_engine_v2_predictions_pair_scored",
+        ),
+    )

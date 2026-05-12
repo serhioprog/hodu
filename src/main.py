@@ -34,6 +34,7 @@ from src.tasks.scheduler import job_email_report
 
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text as sql_text
+from fastapi import Form
 
 # =============================================================
 # LIFESPAN — start/stop APScheduler inside uvicorn's event loop
@@ -597,6 +598,75 @@ async def _dissolve_cluster_with_feedback(
 
     return feedback_count
 
+async def _silent_dissolve_cluster(
+    session: AsyncSession,
+    cluster_id: str,
+) -> None:
+    """
+    Тихий роспуск кластера — БЕЗ записи в ai_duplicate_feedbacks.
+
+    Семантически отличается от _dissolve_cluster_with_feedback:
+      • _dissolve_cluster_with_feedback — admin reject ("эти НЕ дубликаты"),
+        пишет feedback по всем парам, чтобы детектор больше не предлагал.
+      • _silent_dissolve_cluster — manual-merge cleanup ("эти ARE дубликаты,
+        но в другом кластере теперь"). Старый кластер просто исчезает,
+        оставшимся members'ам cluster_id обнуляется. Никаких feedback.
+
+    Используется когда manual merge забирает members из существующего
+    кластера и оставляет его с < 2 членами — кластер теряет смысл.
+
+    Idempotent: безопасно вызывать дважды (concurrent admin actions).
+    """
+    # Idempotency guard — concurrent operation might already have dissolved.
+    exists = await session.scalar(
+        select(PropertyCluster.id).where(PropertyCluster.id == cluster_id)
+    )
+    if not exists:
+        return
+
+    # 1. Detach остающиеся members (если такие ещё есть)
+    await session.execute(
+        update(Property)
+        .where(Property.cluster_id == cluster_id)
+        .values(cluster_id=None)
+    )
+    # 2. Delete cluster (CASCADE на power_properties.cluster_id)
+    await session.execute(
+        delete(PropertyCluster).where(PropertyCluster.id == cluster_id)
+    )
+
+
+async def _delete_feedback_for_pairs(
+    session: AsyncSession,
+    property_ids: list[str],
+) -> int:
+    """
+    Удалить ai_duplicate_feedbacks rows для всех пар (a, b) среди property_ids.
+
+    Используется в manual-merge: admin сейчас явно говорит "эти ARE
+    duplicates", значит любой предыдущий "эти NOT duplicates" feedback
+    становится недействителен. Иначе следующий запуск детектора снова
+    отфильтрует эти пары и кластер развалится.
+
+    Set-based DELETE: матчит rows независимо от ordering convention
+    (хотя все writers нормализуют prop_a_id<prop_b_id, а БД constraint
+    enforce'ит только uniqueness — так что несколько защитных слоёв
+    здесь полезны).
+
+    Возвращает количество удалённых строк (для логирования).
+    """
+    if len(property_ids) < 2:
+        return 0
+
+    result = await session.execute(text("""
+        DELETE FROM ai_duplicate_feedbacks
+        WHERE prop_a_id::text = ANY(:ids)
+          AND prop_b_id::text = ANY(:ids)
+          AND prop_a_id != prop_b_id
+        RETURNING id
+    """), {"ids": property_ids})
+    return len(result.fetchall())
+
 @app.post("/admin/email/send-test")
 async def admin_send_test_email(request: Request):
     async with async_session_maker() as session:
@@ -664,6 +734,293 @@ async def _manual_verdict(
         logger.info(f"[admin] approved cluster {cluster_id}")
 
     await session.commit()
+
+# =============================================================
+# BULK CLUSTER VERDICT — Group C
+# =============================================================
+# Insert this BLOCK in main.py right AFTER the existing
+# `admin_cluster_remove_member` endpoint (around line 722).
+#
+# It reuses the existing _manual_verdict() helper, so all the
+# same audit logic (verdict_locked, dissolve+feedback, etc) is
+# preserved — we just iterate.
+#
+# Request shape (form-encoded, same CSRF + cookies as singletons):
+#     csrf_token=<token>
+#     action=approve | reject
+#     cluster_ids=id1,id2,id3      (comma-separated UUIDs)
+#
+# Response:
+#     {"status": "ok",
+#      "results": {"approved": 5, "rejected": 0, "errors": [...]}}
+
+from fastapi import Form
+# ^ if not already imported at top of main.py — add it there once.
+
+
+@app.post("/admin/clusters/bulk-verdict")
+async def admin_clusters_bulk_verdict(
+    request: Request,
+    action: str = Form(...),
+    cluster_ids: str = Form(...),  # comma-separated
+):
+    """
+    Apply the same verdict (approve OR reject) to many clusters at once.
+
+    Implemented as a loop over _manual_verdict, not as a single bulk SQL
+    statement, because:
+      - reject path needs to dissolve each cluster and write its own
+        feedback pairs (different cluster = different members)
+      - we want partial success: if cluster #4 fails, clusters 1-3
+        already committed. Caller sees per-cluster outcome.
+
+    The frontend animates each card removal in sequence — single-action
+    UX consistency. No Redirect, frontend handles DOM update on its own.
+    """
+    if action not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="action must be approve|reject")
+
+    ids = [s.strip() for s in cluster_ids.split(",") if s.strip()]
+    if not ids:
+        raise HTTPException(status_code=400, detail="no cluster_ids provided")
+    if len(ids) > 100:
+        # Defensive cap — admin tools shouldn't be the way to bulk-modify
+        # thousands of rows. If this ever fires, paginate the UI.
+        raise HTTPException(status_code=400, detail="too many clusters in one call (max 100)")
+
+    target_status = (
+        ClusterStatus.APPROVED if action == "approve"
+        else ClusterStatus.REJECTED
+    )
+
+    results = {"approved": 0, "rejected": 0, "errors": []}
+
+    async with async_session_maker() as session:
+        admin = await get_current_admin(request, session)
+        if not admin:
+            raise HTTPException(status_code=403)
+
+        for cid in ids:
+            try:
+                await _manual_verdict(session, admin, cid, target_status)
+                if action == "approve":
+                    results["approved"] += 1
+                else:
+                    results["rejected"] += 1
+            except HTTPException as e:
+                # 404 (cluster not found) — typically harmless race with
+                # another admin tab. Record it but keep processing.
+                results["errors"].append({"cluster_id": cid, "error": e.detail})
+            except Exception as e:
+                logger.warning(f"[admin/bulk] failed cluster {cid}: {e}")
+                results["errors"].append({"cluster_id": cid, "error": str(e)})
+
+    logger.info(
+        f"[admin/bulk] {action}: "
+        f"approved={results['approved']} rejected={results['rejected']} "
+        f"errors={len(results['errors'])}"
+    )
+    return {"status": "ok", "results": results}
+
+@app.get("/admin/clusters/recurrence-check")
+async def admin_clusters_recurrence_check(
+    request: Request,
+    property_ids: str = Query(...),
+):
+    """
+    Pre-merge dry-check: how many of the candidate-merge pairs were
+    previously rejected by admins as not-duplicates?
+
+    Used by frontend to show a warning dialog before a destructive merge.
+    Read-only — no CSRF needed (GET method, csrf middleware skips).
+
+    Query: ?property_ids=uuid1,uuid2,uuid3
+    Returns: {"count": N} — number of feedback rows whose pair (a, b)
+             is fully contained in the input ids set.
+    """
+    async with async_session_maker() as session:
+        admin = await get_current_admin(request, session)
+        if not admin:
+            raise HTTPException(status_code=403)
+
+        ids = [s.strip() for s in property_ids.split(",") if s.strip()]
+        if len(ids) < 2:
+            return {"count": 0}
+
+        # Set-based lookup with column::text cast — portable across drivers,
+        # works even if a future writer ever inserts denormalized (b, a) pair.
+        row = (await session.execute(text("""
+            SELECT COUNT(*) AS cnt
+            FROM ai_duplicate_feedbacks f
+            WHERE f.prop_a_id::text = ANY(:ids)
+              AND f.prop_b_id::text = ANY(:ids)
+              AND f.prop_a_id != f.prop_b_id
+        """), {"ids": ids})).first()
+
+        return {"count": int(row.cnt or 0)}
+
+
+@app.post("/admin/clusters/manual-merge")
+async def admin_clusters_manual_merge(
+    request: Request,
+    property_ids: str = Form(...),
+):
+    """
+    Manual merge: create new APPROVED cluster from a set of properties
+    selected by admin. Properties may be singletons (no cluster_id) or
+    members of existing clusters — any combination is allowed.
+
+    Workflow:
+      1. Validate property_ids (>=2, all exist, NOT all in same cluster)
+      2. Identify source clusters (distinct cluster_ids, excluding NULL)
+      3. Create new APPROVED cluster (verdict_locked=True)
+      4. Reassign properties to new cluster
+      5. For each old cluster: recompute member_count
+         - >=2 → keep, update member_count
+         - <2  → silent dissolve (NO feedback writes — admin says ARE
+           duplicates, not NOT duplicates)
+      6. DELETE feedback for merged pairs (admin overrides prior rejections)
+      7. Trigger PowerObject regen (fail-silent, separate session)
+
+    PowerObject regen will short-circuit on the new cluster's
+    last_external_is_unique=None → that's expected and logged at INFO.
+    A real exception during regen is logged at WARNING and does NOT
+    affect merge success.
+    """
+    async with async_session_maker() as session:
+        admin = await get_current_admin(request, session)
+        if not admin:
+            raise HTTPException(status_code=403)
+
+        # --- Parse + validate input ---------------------------------------
+        ids = [s.strip() for s in property_ids.split(",") if s.strip()]
+        if len(ids) < 2:
+            raise HTTPException(
+                status_code=400,
+                detail="need at least 2 properties",
+            )
+        if len(ids) > 100:
+            raise HTTPException(
+                status_code=400,
+                detail="too many properties in one merge (max 100)",
+            )
+
+        # --- Lookup all properties ----------------------------------------
+        props = (await session.execute(
+            select(Property).where(Property.id.in_(ids))
+        )).scalars().all()
+
+        found_ids = {str(p.id) for p in props}
+        missing = set(ids) - found_ids
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"property {missing.pop()} not found",
+            )
+
+        # --- Check NOT all in same cluster --------------------------------
+        cluster_ids_set = {p.cluster_id for p in props}
+        if len(cluster_ids_set) == 1 and None not in cluster_ids_set:
+            raise HTTPException(
+                status_code=400,
+                detail="all properties already in same cluster",
+            )
+
+        # --- Identify source clusters (excluding NULL) -------------------
+        source_clusters = {p.cluster_id for p in props if p.cluster_id is not None}
+
+        # --- Create new APPROVED cluster ---------------------------------
+        new_cluster = PropertyCluster(
+            status=ClusterStatus.APPROVED,
+            verdict_locked=True,
+            verdict_locked_at=datetime.now(timezone.utc),
+            verdict_locked_by=admin.id,
+            member_count=len(ids),
+            ai_score=None,
+            phash_matches=None,
+            notes=(
+                f"Manual merge of {len(ids)} properties from "
+                f"clusters {sorted(str(c) for c in source_clusters)}"
+                if source_clusters else
+                f"Manual merge of {len(ids)} singleton properties"
+            ),
+        )
+        session.add(new_cluster)
+        await session.flush()
+        new_cluster_id = new_cluster.id
+
+        # --- Reassign properties -----------------------------------------
+        for p in props:
+            p.cluster_id = new_cluster_id
+
+        # Need flush before recomputing old cluster sizes,
+        # otherwise count would still see old cluster_id values.
+        await session.flush()
+
+        # --- Old cluster cleanup -----------------------------------------
+        for old_cid in source_clusters:
+            count = (await session.execute(
+                select(func.count(Property.id)).where(
+                    Property.cluster_id == old_cid
+                )
+            )).scalar() or 0
+
+            if count >= 2:
+                await session.execute(
+                    update(PropertyCluster)
+                    .where(PropertyCluster.id == old_cid)
+                    .values(
+                        member_count=count,
+                        updated_at=datetime.now(timezone.utc),
+                    )
+                )
+            else:
+                # Silent dissolve — admin says these ARE duplicates,
+                # not NOT duplicates. No feedback rows written.
+                await _silent_dissolve_cluster(session, old_cid)
+
+        # --- Erase prior "NOT duplicates" feedback ----------------------
+        deleted_feedback = await _delete_feedback_for_pairs(session, ids)
+
+        await session.commit()
+
+        logger.info(
+            f"[admin/manual-merge] new cluster {new_cluster_id} "
+            f"from {len(ids)} properties "
+            f"(sources={source_clusters}, deleted_feedback={deleted_feedback})"
+        )
+
+    # --- Trigger PowerObject regen (fail-silent, fresh session) ---------
+    # generate_for_cluster will early-return None because new cluster's
+    # last_external_is_unique=None — that's the expected path until
+    # external API integration is enabled. Logged at INFO.
+    # Real exceptions (e.g. dormant bug #1 PHashService.hamming, when
+    # external API is later enabled) are logged at WARNING — merge stays
+    # successful regardless.
+    try:
+        from src.services.power_object_generator import PowerObjectGenerator
+        generator = PowerObjectGenerator()
+        async with async_session_maker() as fresh_session:
+            result = await generator.generate_for_cluster(
+                fresh_session, new_cluster_id
+            )
+            if result is None:
+                logger.info(
+                    f"[admin/manual-merge] power regen deferred for "
+                    f"{new_cluster_id} (last_external_is_unique not set, "
+                    f"will be regen'd after next external check)"
+                )
+            else:
+                logger.success(
+                    f"[admin/manual-merge] power object created "
+                    f"for {new_cluster_id}"
+                )
+    except Exception as e:
+        logger.warning(
+            f"[admin/manual-merge] power regen failed (non-fatal): {e}"
+        )
+
+    return {"status": "ok", "cluster_id": str(new_cluster_id)}
 
 
 @app.post("/admin/clusters/{cluster_id}/approve")

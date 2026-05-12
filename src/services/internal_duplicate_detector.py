@@ -184,7 +184,7 @@ class InternalDuplicateDetector:
     async def run(self, session: AsyncSession) -> Dict[str, int]:
         stats: Dict[str, int] = {
             "approved_merged":     0,
-            "approved_singleton":  0,
+            "approved_singleton_skipped":  0,
             "pending":             0,
             "locked_preserved":    0,
             "orphans_removed":     0,
@@ -427,28 +427,19 @@ class InternalDuplicateDetector:
     ) -> Dict[str, int]:
         out = {
             "approved_merged":    0,
-            "approved_singleton": 0,
+            "approved_singleton_skipped": 0,
             "pending":            0,
             "locked_preserved":   0,
         }
 
         if len(member_ids) == 1:
-            pid = member_ids[0]
-            prop = (await session.execute(
-                select(Property).where(Property.id == pid)
-            )).scalar_one_or_none()
-            if prop is None or prop.cluster_id is not None:
-                return out
-            cluster = PropertyCluster(
-                status=ClusterStatus.APPROVED,
-                member_count=1,
-                ai_score=None,
-                phash_matches=0,
-            )
-            session.add(cluster)
-            await session.flush()
-            prop.cluster_id = cluster.id
-            out["approved_singleton"] = 1
+            # Spec §3.3: "1 = singleton, typically not stored as cluster".
+            # RESEARCH.md §12.5.9 (engine v2) explicitly forbids singleton
+            # cluster rows. Disabled per architect decision 2026-05-07
+            # (PROD_CLEANUP_TASKS.md §3 fix).
+            # Property remains with cluster_id=NULL (its natural singleton
+            # representation).
+            out["approved_singleton_skipped"] = 1
             return out
 
         props = (await session.execute(

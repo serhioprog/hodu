@@ -37,7 +37,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # --- Scrapers ---
 from src.scrapers.gl_real_estate import GLRealEstateScraper
 from src.scrapers.greek_exclusive_properties import GreekExclusiveScraper
+from src.scrapers.grekodom_development import GrekodomDevelopmentScraper
+from src.scrapers.halkidiki_estate import HalkidikiEstateScraper
+from src.scrapers.halkidiki_real_estate_hellenic_living import HalkidikiRealEstateScraper
 from src.scrapers.real_estate_center_SJ import RealEstateCenterScraper
+from src.scrapers.sithonia_rental_sales import SithoniaRentalSalesScraper
+from src.scrapers.engel_voelkers import EngelVoelkersScraper
+from src.scrapers.sousouras_realestate import SousourasRealEstateScraper
 
 # --- DB & Core ---
 from src.core.config import settings
@@ -302,6 +308,12 @@ async def _run_scrapers(global_stats: Dict[str, int]) -> List[DomainSyncReport]:
         GLRealEstateScraper(),
         RealEstateCenterScraper(),
         GreekExclusiveScraper(),
+        #SousourasRealEstateScraper(),
+        SithoniaRentalSalesScraper(),
+        HalkidikiEstateScraper(),
+        EngelVoelkersScraper(),
+        GrekodomDevelopmentScraper(),
+        HalkidikiRealEstateScraper(),
     ]
 
     domain_reports: List[DomainSyncReport] = []
@@ -777,6 +789,37 @@ async def _ingest_new_properties(
 async def _run_mdm_pipeline() -> None:
     embedder = EmbeddingService()
     detector = InternalDuplicateDetector()
+
+    # Phase 1 shadow: engine v2 runs BEFORE the old engine on a SEPARATE
+    # session so failures here cannot break the existing pipeline.
+    # Gated by settings.USE_NEW_DUPLICATE_ENGINE (default False, opt-in
+    # via .env). New engine writes only engine_v2_predictions + cache.
+    if settings.USE_NEW_DUPLICATE_ENGINE:
+        try:
+            from experiments.new_engine_v2.src.engine import HybridEngine
+            engine_v2 = HybridEngine.build_default()
+            async with async_session_maker() as v2_session:
+                shadow_report = await engine_v2.run_full_dedup(v2_session)
+                await v2_session.commit()
+            logger.info(
+                "[MDM] engine v2 shadow report: "
+                "scored={s} cached={c} cost=${cost:.4f} "
+                "new_clusters={n} attached={a} bridges={b} "
+                "approved_disagreements={ad} errors={e} elapsed={t}ms",
+                s=shadow_report.pairs_scored,
+                c=shadow_report.pairs_cached,
+                cost=shadow_report.cost_usd,
+                n=shadow_report.new_clusters_proposed,
+                a=shadow_report.attached_clusters_count,
+                b=shadow_report.bridge_blocks,
+                ad=shadow_report.approved_disagreements,
+                e=shadow_report.errors_count,
+                t=shadow_report.latency_ms,
+            )
+        except Exception:
+            # Shadow mode MUST NOT block production pipeline.
+            # logger.exception captures full traceback for diagnosis.
+            logger.exception("[MDM] engine v2 shadow run FAILED")
 
     async with async_session_maker() as session:
         logger.info("[MDM] step 1: refresh embeddings")

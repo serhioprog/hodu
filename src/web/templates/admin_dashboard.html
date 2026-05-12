@@ -280,7 +280,7 @@
                             <select id="filterStatus" class="form-select form-select-sm" style="width: 90px;">
                                 <option value="">All</option>
                                 <option value="NEW">New</option>
-                                <option value="PRICE DROP">Drop</option>
+                                <option value="PRICE DROP">Price Change</option>
                                 <option value="ACTIVE">Active</option>
                                 <option value="DELISTED">Delisted</option>
                             </select>
@@ -292,6 +292,7 @@
                     <table class="table table-custom" id="propertiesTable">
                         <thead>
                             <tr>
+                                <th style="width: 40px;"></th>
                                 <th style="width: 60px;">Photo</th>
                                 <th>HODU ID</th>
                                 <th>Site ID</th>
@@ -307,6 +308,16 @@
                         <tbody>
                             {% for prop in properties %}
                             <tr class="clickable-row" onclick="window.open('/property/{{ prop.id }}', '_blank')">
+                                <td style="vertical-align: middle; text-align: center;">
+                                    {% if prop.is_active %}
+                                        <input type="checkbox"
+                                               class="property-merge-check"
+                                               data-property-id="{{ prop.id }}"
+                                               data-cluster-id="{{ prop.cluster_id or '' }}"
+                                               style="width: 16px; height: 16px; cursor: pointer;"
+                                               onclick="event.stopPropagation(); updateBars();">
+                                    {% endif %}
+                                </td>
                                 <td>
                                     {% if prop.media %}
                                         <img src="/{{ prop.media[0].local_file_path | fix_path }}" class="admin-thumb" alt="thumb">
@@ -464,18 +475,18 @@
                         <div class="row">
                             <div class="col-md-5">
                                 <div class="filter-panel p-4">
-                                    <h6 class="fw-bold mb-3">Cron Automation Scheduler</h6>
+                                    <h6 class="fw-bold mb-3">Master Data Management Automation Scheduler</h6>
                                     <form action="/admin/settings/update" method="post">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                         <div class="mb-4">
-                                            <label class="form-label text-muted small fw-bold">Scraper start time (sync)</label>
+                                            <label class="form-label text-muted small fw-bold">Daily scrapers start time</label>
                                             <input type="time" name="sync_time" class="form-control bg-light" value="{{ sync_time }}">
-                                            <div class="form-text small">Time when bots start collecting new properties.</div>
+                                            <div class="form-text small">Set the time when all scrapers will start working</div>
                                         </div>
                                         <div class="mb-4">
-                                            <label class="form-label text-muted small fw-bold">Report delivery time (email)</label>
+                                            <label class="form-label text-muted small fw-bold">Daily email report delivery time</label>
                                             <input type="time" name="report_time" class="form-control bg-light" value="{{ report_time }}">
-                                            <div class="form-text small">Time when daily digest is sent to agents.</div>
+                                            <div class="form-text small">Set the time for sending daily reports to agents</div>
                                         </div>
                                         <button type="submit" class="btn btn-hodu-main w-100 fw-bold shadow-sm">Save settings</button>
                                     </form>
@@ -666,28 +677,35 @@ $(document).ready(function () {
 
     var table = $('#propertiesTable').DataTable({
         dom: "<'row'<'col-sm-12'tr>><'row mt-3 align-items-center'<'col-sm-12 col-md-5 small text-muted'i><'col-sm-12 col-md-7 d-flex justify-content-end'p>>",
-        order: [[1, 'desc']],
+        order: [[2, 'desc']],
         pageLength: 25,
-        columnDefs: [{ orderable: false, targets: 0 }]
+        columnDefs: [{ orderable: false, targets: [0, 1] }],
+        // Persist checkbox state across DataTable redraws (pagination/search/sort)
+        // — DataTable rebuilds DOM on each draw, losing :checked state.
+        drawCallback: function() {
+            if (typeof restorePropertyCheckboxState === 'function') {
+                restorePropertyCheckboxState();
+            }
+        }
     });
 
     $('#customLength').on('change', function () { table.page.len($(this).val()).draw(); });
     $('#customSearch').on('keyup', function () { table.search($(this).val()).draw(); });
 
-    // Заполняем фильтр Source (индекс 3)
-    table.column(3).data().unique().sort().each(function (d) {
+    // Заполняем фильтр Source (индекс 4 — был 3 до добавления checkbox column)
+    table.column(4).data().unique().sort().each(function (d) {
         var val = $('<div/>').html(d).text().trim();
         if (val && val !== '—') $('#filterSource').append('<option value="' + val + '">' + val + '</option>');
     });
 
-    // Заполняем фильтр Area (индекс 4)
-    table.column(4).data().unique().sort().each(function (d) {
+    // Заполняем фильтр Area (индекс 5 — был 4)
+    table.column(5).data().unique().sort().each(function (d) {
         var val = $('<div/>').html(d).text().trim();
         if (val && val !== '—') $('#filterArea').append('<option value="' + val + '">' + val + '</option>');
     });
 
-    // Заполняем фильтр Type (индекс 5)
-    table.column(5).data().unique().sort().each(function (d) {
+    // Заполняем фильтр Type (индекс 6 — был 5)
+    table.column(6).data().unique().sort().each(function (d) {
         var val = $('<div/>').html(d).text().trim();
         if (val && val !== '—') $('#filterType').append('<option value="' + val + '">' + val + '</option>');
     });
@@ -695,20 +713,20 @@ $(document).ready(function () {
     // Обработчики фильтров
     $('#filterStatus').on('change', function () {
         var val = $.fn.dataTable.util.escapeRegex($(this).val());
-        table.column(8).search(val || '', true, false).draw();
+        table.column(9).search(val || '', true, false).draw();  // Status: было col 8, теперь 9
     });
 
     $('#filterSource').on('change', function () {
         var val = $.fn.dataTable.util.escapeRegex($(this).val());
-        table.column(3).search(val ? '^' + val + '$' : '', true, false).draw(); // Индекс 3
+        table.column(4).search(val ? '^' + val + '$' : '', true, false).draw(); // Source: было col 3, теперь 4 (после checkbox column)
     });
     $('#filterArea').on('change', function () {
         var val = $.fn.dataTable.util.escapeRegex($(this).val());
-        table.column(4).search(val ? '^' + val + '$' : '', true, false).draw(); // Индекс 4
+        table.column(5).search(val ? '^' + val + '$' : '', true, false).draw(); // Area: было col 4, теперь 5
     });
     $('#filterType').on('change', function () {
         var val = $.fn.dataTable.util.escapeRegex($(this).val());
-        table.column(5).search(val ? '^' + val + '$' : '', true, false).draw(); // Индекс 5
+        table.column(6).search(val ? '^' + val + '$' : '', true, false).draw(); // Type: было col 5, теперь 6
     });
     
     $('#filterPriceMin, #filterPriceMax').on('keyup change', function () { table.draw(); });
@@ -718,7 +736,10 @@ $(document).ready(function () {
 <script>
 function removeProp(clusterId, propId, btn, event) {
     // Останавливаем клик, чтобы не открывалась соседняя вкладка с виллой
-    event.stopPropagation(); 
+    event.stopPropagation();
+
+    // Confirm — destructive, undoable through manual-merge but operationally permanent.
+    if (!confirmDestructive('remove_property', { clusterId, propId })) return;
 
     // Берем скрытый CSRF токен (он есть на странице)
     const csrfToken = document.querySelector('input[name="csrf_token"]').value;
@@ -726,8 +747,11 @@ function removeProp(clusterId, propId, btn, event) {
     // Отправляем тихий фоновый запрос на сервер
     fetch(`/admin/clusters/${clusterId}/remove/${propId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ 'csrf_token': csrfToken })
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRF-Token': csrfToken,
+        },
+        body: ''
     })
     .then(response => {
         if (response.ok) {
@@ -763,12 +787,28 @@ function removeProp(clusterId, propId, btn, event) {
 }
 
 function handleClusterVerdict(clusterId, action, btn) {
+    // Confirm only for destructive actions. Approve is reversible via dissolve.
+    if (action === 'reject') {
+        // 'reject' covers both PENDING reject and APPROVED dissolve — same backend path.
+        // Determine semantics from the cluster card's current status badge.
+        const card = btn.closest('.cluster-card');
+        const badge = card ? card.querySelector('.cluster-status-badge') : null;
+        const isApproved = badge && badge.innerText.trim() === 'Approved';
+        const tableRows = card ? card.querySelectorAll('tbody tr').length : 0;
+
+        const confirmAction = isApproved ? 'dissolve_cluster' : 'reject_cluster';
+        if (!confirmDestructive(confirmAction, { clusterId, memberCount: tableRows })) return;
+    }
+
     const csrfToken = document.querySelector('input[name="csrf_token"]').value;
-    
+
     fetch(`/admin/clusters/${clusterId}/${action}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ 'csrf_token': csrfToken })
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRF-Token': csrfToken,
+        },
+        body: ''
     })
     .then(response => {
         if (response.ok) {
@@ -871,6 +911,509 @@ function startScrapers() {
         location.reload(); 
     });
 }
+</script>
+
+<!--
+  ===========================================================
+  GROUP C — BULK CLUSTER OPERATIONS
+  ===========================================================
+  Add this block at the END of admin_dashboard.html, right
+  before the closing </body> tag (or wherever your other
+  <script> blocks live — the existing removeProp / handleClusterVerdict
+  scripts are a good neighbour).
+
+  The bar is fixed to the bottom of the viewport and only visible
+  when one or more pending clusters are checked. Clicking either
+  button fires bulk-verdict to the backend, then animates the
+  selected cards away.
+-->
+
+<!-- Sticky bulk-action bar — hidden until clusters are checked -->
+<div id="bulk-cluster-bar"
+     style="position: fixed; bottom: 0; left: 0; right: 0;
+            background: #1F2937; color: white;
+            padding: 14px 24px;
+            box-shadow: 0 -4px 16px rgba(0,0,0,0.15);
+            display: none;
+            z-index: 1000;
+            transform: translateY(100%);
+            transition: transform 0.25s ease-out;">
+    <div class="container d-flex justify-content-between align-items-center">
+        <div>
+            <span id="bulk-cluster-count" style="font-weight: 600; font-size: 15px;">
+                0 clusters selected
+            </span>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-sm" id="bulk-cluster-clear"
+                    onclick="clearBulkClusterSelection()"
+                    style="background: transparent; color: #9CA3AF; border: 1px solid #4B5563;">
+                Cancel
+            </button>
+            <button type="button" class="btn btn-sm" id="bulk-cluster-reject"
+                    onclick="bulkClusterVerdict('reject')"
+                    style="background: #DC2626; color: white; font-weight: 600;">
+                ✕ Reject all
+            </button>
+            <button type="button" class="btn btn-sm" id="bulk-cluster-approve"
+                    onclick="bulkClusterVerdict('approve')"
+                    style="background: #059669; color: white; font-weight: 600;">
+                ✓ Approve all
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================
+     Sticky property-merge bar — Group D (Manual Merge)
+     ============================================================
+     Hidden until property-row checkboxes are checked AND no cluster
+     checkboxes are active (Group C wins precedence — see updateBars()).
+     Blue color (#1E40AF) differentiates from dark gray Group C bar.
+     z-index 1001 above Group C 1000 (so they layer properly if both
+     are accidentally visible during a render race).
+-->
+<div id="property-merge-bar"
+     style="position: fixed; bottom: 0; left: 0; right: 0;
+            background: #1E40AF; color: white;
+            padding: 14px 24px;
+            box-shadow: 0 -4px 16px rgba(0,0,0,0.15);
+            display: none;
+            z-index: 1001;
+            transform: translateY(100%);
+            transition: transform 0.25s ease-out;">
+    <div class="container d-flex justify-content-between align-items-center">
+        <div>
+            <span id="property-merge-count" style="font-weight: 600; font-size: 15px;">
+                0 properties selected
+            </span>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-sm" id="property-merge-clear"
+                    onclick="clearPropertySelection()"
+                    style="background: transparent; color: #BFDBFE; border: 1px solid #60A5FA;">
+                Cancel
+            </button>
+            <button type="button" class="btn btn-sm" id="property-merge-submit"
+                    onclick="checkRecurrenceBeforeMerge()"
+                    style="background: #FFFFFF; color: #1E40AF; font-weight: 700;">
+                ⇄ Merge into one cluster
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ===================================================================
+// BULK CLUSTER OPERATIONS — Group C
+// ===================================================================
+// Tracks which pending clusters the admin has checked, and provides
+// a single-click bulk approve/reject. Reuses the same backend logic
+// (_manual_verdict) so audit trail is identical to per-card actions.
+
+function getCheckedClusterCheckboxes() {
+    return Array.from(document.querySelectorAll('.cluster-bulk-check:checked'));
+}
+
+function updateBulkClusterBar() {
+    const checked = getCheckedClusterCheckboxes();
+    const bar     = document.getElementById('bulk-cluster-bar');
+    const label   = document.getElementById('bulk-cluster-count');
+    const n       = checked.length;
+    if (n === 0) {
+        // Slide out, then hide. Slight delay matches CSS transition.
+        bar.style.transform = 'translateY(100%)';
+        setTimeout(() => { bar.style.display = 'none'; }, 250);
+        // After Group C disappears, Group D may need to re-evaluate
+        // (e.g. user de-selected last cluster but had property checkboxes set).
+        if (typeof updatePropertyMergeBar === 'function') updatePropertyMergeBar();
+        return;
+    }
+    label.textContent = `${n} cluster${n === 1 ? '' : 's'} selected`;
+    if (bar.style.display === 'none' || !bar.style.display) {
+        bar.style.display = 'block';
+        // Force reflow so the CSS transition is observable
+        bar.offsetHeight;  // eslint-disable-line no-unused-expressions
+        bar.style.transform = 'translateY(0)';
+    }
+    // Group C is now visible — hide Group D unconditionally (Group C wins).
+    if (typeof updatePropertyMergeBar === 'function') updatePropertyMergeBar();
+}
+
+function clearBulkClusterSelection() {
+    getCheckedClusterCheckboxes().forEach(cb => { cb.checked = false; });
+    updateBulkClusterBar();
+}
+
+async function bulkClusterVerdict(action) {
+    const checked = getCheckedClusterCheckboxes();
+    if (checked.length === 0) return;
+
+    const ids = checked.map(cb => cb.dataset.clusterId);
+
+    // Confirm only for destructive bulk action. Bulk approve is reversible.
+    if (action === 'reject') {
+        if (!confirmDestructive('bulk_reject', { count: ids.length })) return;
+    }
+
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+
+    // Lock buttons during request to prevent double-fire
+    const approveBtn = document.getElementById('bulk-cluster-approve');
+    const rejectBtn  = document.getElementById('bulk-cluster-reject');
+    approveBtn.disabled = true;
+    rejectBtn.disabled  = true;
+    approveBtn.style.opacity = '0.5';
+    rejectBtn.style.opacity  = '0.5';
+
+    try {
+        const response = await fetch('/admin/clusters/bulk-verdict', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-Token': csrfToken,
+            },
+            body: new URLSearchParams({
+                action: action,
+                cluster_ids: ids.join(','),
+            }),
+        });
+
+        if (!response.ok) {
+            alert(`Bulk ${action} failed: HTTP ${response.status}`);
+            return;
+        }
+
+        const data = await response.json();
+        const succeeded = action === 'approve' ? data.results.approved : data.results.rejected;
+        const errored   = data.results.errors.length;
+
+        // Animate cards away — same UX as the per-card flow.
+        // For approve: card moves to "approved" tab.
+        // For reject:  card just disappears.
+        const approvedContainer = document.getElementById('approved-clusters-container');
+        const pendingCounter    = document.getElementById('pending-count');
+        const approvedCounter   = document.getElementById('approved-count');
+
+        for (const cb of checked) {
+            const card = document.getElementById(`cluster-card-${cb.dataset.clusterId}`);
+            if (!card) continue;
+
+            if (action === 'approve' && approvedContainer) {
+                // Move to approved tab, mirror per-card animation
+                const actionsDiv = card.querySelector('.cluster-actions');
+                const badge      = card.querySelector('.cluster-status-badge');
+                if (actionsDiv) actionsDiv.style.display = 'none';
+                if (badge) {
+                    badge.className = 'badge bg-success text-white cluster-status-badge';
+                    badge.innerText = 'Approved';
+                }
+                // Hide the bulk-action checkbox on the moved card
+                cb.style.display = 'none';
+                cb.checked = false;
+
+                card.style.transition = 'opacity 0.25s';
+                card.style.opacity = '0';
+                setTimeout(() => {
+                    approvedContainer.prepend(card);
+                    card.style.opacity = '1';
+                    if (pendingCounter)
+                        pendingCounter.innerText = parseInt(pendingCounter.innerText) - 1;
+                    if (approvedCounter)
+                        approvedCounter.innerText = parseInt(approvedCounter.innerText) + 1;
+                }, 250);
+            } else {
+                // Reject: dissolve, fade out and remove from DOM
+                card.style.transition = 'opacity 0.25s';
+                card.style.opacity = '0';
+                setTimeout(() => {
+                    card.remove();
+                    if (pendingCounter)
+                        pendingCounter.innerText = parseInt(pendingCounter.innerText) - 1;
+                }, 250);
+            }
+        }
+
+        // Hide the bar
+        clearBulkClusterSelection();
+
+        if (errored > 0) {
+            alert(
+                `${action === 'approve' ? 'Approved' : 'Rejected'} ${succeeded} of ${ids.length} clusters. ` +
+                `${errored} error${errored === 1 ? '' : 's'} — check server logs.`
+            );
+        }
+    } catch (e) {
+        alert(`Bulk ${action} failed: ${e.message}`);
+    } finally {
+        approveBtn.disabled = false;
+        rejectBtn.disabled  = false;
+        approveBtn.style.opacity = '1';
+        rejectBtn.style.opacity  = '1';
+    }
+}
+</script>
+
+<script>
+// ===================================================================
+// PROPERTY MANUAL MERGE — Group D
+// ===================================================================
+// Tracks which individual properties (across any clusters/singletons)
+// the admin has selected via property-row checkboxes. Allows merging
+// them into a single new APPROVED cluster.
+//
+// Yields precedence to Group C (cluster-level bulk operations). If any
+// cluster checkbox is active, the property-merge bar is hidden — admin
+// finishes the cluster-level action first.
+// ===================================================================
+
+// Persistent set of selected property IDs — survives DataTable redraws.
+// DataTable rebuilds DOM on pagination/search/sort, so :checked state
+// is lost. We track state here and restore it after each draw.
+// ===================================================================
+// CONFIRM DIALOG — for destructive/irreversible actions
+// ===================================================================
+// Wraps native browser confirm() so we have a single place to swap to
+// a custom overlay later (Sprint 5 — UX polish) without touching callers.
+// Returns true if admin confirmed, false if cancelled.
+//
+// Usage:
+//   if (!confirmDestructive('reject_cluster', { clusterId, memberCount })) return;
+//
+// Action types:
+//   'reject_cluster'   — single cluster reject (PENDING)
+//   'dissolve_cluster' — APPROVED cluster dissolve (semantics = reject)
+//   'remove_property'  — detach property from cluster
+//   'bulk_reject'      — bulk reject of N clusters
+function confirmDestructive(action, context) {
+    let title, body;
+    const ctx = context || {};
+
+    if (action === 'reject_cluster' || action === 'dissolve_cluster') {
+        const verb = action === 'reject_cluster' ? 'Reject' : 'Dissolve';
+        const idShort = (ctx.clusterId || '').slice(0, 8).toUpperCase();
+        const memberInfo = ctx.memberCount
+            ? `\n• Mark ${ctx.memberCount} properties as not-duplicates` +
+              `\n• Record ${ctx.memberCount * (ctx.memberCount - 1) / 2} pair(s) in feedback log (recurrence count +1 each)`
+            : '\n• Mark all members as not-duplicates and record pairs in feedback log';
+        title = `${verb} cluster ${idShort}?`;
+        body = `${title}\n\nThis will:${memberInfo}\n• Cluster will be deleted permanently\n\nThis action cannot be undone.`;
+    } else if (action === 'remove_property') {
+        title = `Remove property from cluster?`;
+        body = `${title}\n\nThis property will be detached from the cluster and become a singleton.\nIf the cluster shrinks below 2 members, it will be dissolved entirely.\n\nThis action cannot be undone.`;
+    } else if (action === 'bulk_reject') {
+        const n = ctx.count || 0;
+        title = `Reject ${n} cluster${n === 1 ? '' : 's'}?`;
+        body = `${title}\n\nThis will:\n• Mark all members as not-duplicates\n• Record pairs in feedback log\n• ${n} cluster${n === 1 ? '' : 's'} will be deleted permanently\n\nThis action cannot be undone.`;
+    } else {
+        // Generic fallback — defensive, shouldn't happen if callers use known actions
+        body = 'Are you sure you want to perform this action?\nThis action cannot be undone.';
+    }
+
+    return confirm(body);
+}
+
+// Persistent set of selected property IDs — survives DataTable redraws.
+const selectedPropertyIds = new Set();
+
+function getCheckedPropertyCheckboxes() {
+    return Array.from(document.querySelectorAll('.property-merge-check:checked'));
+}
+
+// Sync DOM → Set whenever a checkbox state changes.
+// This is the source of truth — Set follows DOM strictly.
+function syncCheckboxToSet(checkbox) {
+    if (!checkbox || !checkbox.dataset || !checkbox.dataset.propertyId) return;
+    if (checkbox.checked) {
+        selectedPropertyIds.add(checkbox.dataset.propertyId);
+    } else {
+        selectedPropertyIds.delete(checkbox.dataset.propertyId);
+    }
+}
+
+// Sync Set → DOM after DataTable redraw.
+// Newly drawn rows that match an ID in our set are restored to :checked.
+function restorePropertyCheckboxState() {
+    document.querySelectorAll('.property-merge-check').forEach(cb => {
+        if (selectedPropertyIds.has(cb.dataset.propertyId)) {
+            cb.checked = true;
+        }
+    });
+    // After restore, refresh bar visibility (count may differ from last view).
+    updatePropertyMergeBar();
+}
+
+function updatePropertyMergeBar() {
+    const clustersChecked = document.querySelectorAll('.cluster-bulk-check:checked').length;
+    const bar = document.getElementById('property-merge-bar');
+    const label = document.getElementById('property-merge-count');
+    // Use Set count — survives DataTable pagination/search hiding rows from DOM
+    const n = selectedPropertyIds.size;
+
+    // Group C precedence: if any cluster checkbox is active, hide Group D
+    // unconditionally. Admin should finish cluster-level action first.
+    if (clustersChecked > 0 || n === 0) {
+        bar.style.transform = 'translateY(100%)';
+        setTimeout(() => { bar.style.display = 'none'; }, 250);
+        return;
+    }
+
+    label.textContent = `${n} propert${n === 1 ? 'y' : 'ies'} selected`;
+    if (bar.style.display === 'none' || !bar.style.display) {
+        bar.style.display = 'block';
+        // Force reflow so CSS transition animates
+        bar.offsetHeight;  // eslint-disable-line no-unused-expressions
+        bar.style.transform = 'translateY(0)';
+    }
+}
+
+// Shared wrapper — called from both checkbox onchange handlers.
+// Both bars re-evaluate on every checkbox state change so Group C/D
+// precedence stays consistent.
+function updateBars(changedCheckbox) {
+    if (changedCheckbox && changedCheckbox.classList &&
+        changedCheckbox.classList.contains('property-merge-check')) {
+        syncCheckboxToSet(changedCheckbox);
+    }
+    updateBulkClusterBar();
+    updatePropertyMergeBar();
+}
+
+function clearPropertySelection() {
+    // Clear Set (source of truth)
+    selectedPropertyIds.clear();
+
+    // Clear ALL checkboxes — including those on detached DataTable rows
+    // (hidden by current page/search filter). querySelectorAll only finds
+    // attached DOM nodes; DataTable detaches rows that don't match current
+    // page/search, so we MUST use the DataTable API to iterate every row.
+    if (window.jQuery && jQuery.fn.dataTable && jQuery.fn.dataTable.isDataTable('#propertiesTable')) {
+        try {
+            const table = jQuery('#propertiesTable').DataTable();
+            // { search: 'none', paging: 'none' } → all rows regardless of
+            // current filter / pagination. .nodes() returns <tr> nodes including
+            // detached ones (which DataTable holds in its internal cache).
+            table.rows({ search: 'none', paging: 'none' }).nodes().each(function(tr) {
+                tr.querySelectorAll('.property-merge-check').forEach(cb => {
+                    cb.checked = false;
+                });
+            });
+        } catch (e) {
+            console.warn('[clearPropertySelection] DataTable iteration failed:', e);
+        }
+    }
+
+    // Also walk visible DOM for any .property-merge-check that's not part of
+    // a DataTable (e.g. inside cluster_card.html partials in Duplicates tab).
+    document.querySelectorAll('.property-merge-check').forEach(cb => {
+        cb.checked = false;
+    });
+
+    updatePropertyMergeBar();
+}
+
+// Pre-merge dry-check: were any of these pairs previously rejected as
+// not-duplicates? If yes, warn admin before proceeding (admin override
+// erases prior feedback — see /admin/clusters/manual-merge endpoint).
+async function checkRecurrenceBeforeMerge() {
+    // Use Set — visible DOM may not reflect all selections (DataTable pagination)
+    const propertyIds = Array.from(selectedPropertyIds);
+    if (propertyIds.length < 2) {
+        alert('Need at least 2 properties to merge.');
+        return;
+    }
+    if (propertyIds.length > 100) {
+        alert('Too many properties (max 100). Please select fewer.');
+        return;
+    }
+
+    // Lock submit button to prevent double-click race (see Sprint 5 backlog
+    // for backend idempotency token to make this fully race-proof).
+    const submitBtn = document.getElementById('property-merge-submit');
+    submitBtn.disabled = true;
+    submitBtn.style.opacity = '0.5';
+
+    try {
+        // Pre-flight: count rejected pairs
+        const checkUrl = `/admin/clusters/recurrence-check?property_ids=${encodeURIComponent(propertyIds.join(','))}`;
+        const checkResp = await fetch(checkUrl);
+        if (!checkResp.ok) {
+            alert(`Recurrence-check failed: HTTP ${checkResp.status}`);
+            return;
+        }
+        const { count } = await checkResp.json();
+
+        if (count > 0) {
+            const proceed = confirm(
+                `⚠️ Warning: ${count} pair${count === 1 ? '' : 's'} were previously rejected ` +
+                `as not-duplicates by admin verdict.\n\n` +
+                `Merging these properties will override that prior decision and erase ` +
+                `the feedback record.\n\n` +
+                `Are you sure you want to merge them anyway?`
+            );
+            if (!proceed) return;
+        }
+
+        // Proceed with merge
+        await mergeProperties(propertyIds);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.style.opacity = '1';
+    }
+}
+
+async function mergeProperties(propertyIds) {
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+
+    try {
+        const response = await fetch('/admin/clusters/manual-merge', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-Token': csrfToken,
+            },
+            body: new URLSearchParams({
+                property_ids: propertyIds.join(','),
+            }),
+        });
+
+        if (!response.ok) {
+            const errBody = await response.json().catch(() => ({ detail: 'unknown error' }));
+            alert(`Merge failed: ${errBody.detail || response.status}`);
+            return;
+        }
+
+        const data = await response.json();
+        const newClusterId = data.cluster_id;
+
+        // Optimistic UI: just reload the page so the new APPROVED cluster
+        // appears in the Approved tab and old clusters are recomputed/dissolved.
+        // (More sophisticated DOM manipulation would require knowing all source
+        // clusters and updating their member counts client-side — overkill
+        // when admin explicitly initiated this action.)
+        clearPropertySelection();
+        // Briefly show success before reload
+        const submitBtn = document.getElementById('property-merge-submit');
+        if (submitBtn) {
+            submitBtn.innerText = '✓ Merged — reloading...';
+            submitBtn.style.background = '#DCFCE7';
+            submitBtn.style.color = '#059669';
+        }
+        setTimeout(() => { window.location.reload(); }, 600);
+    } catch (e) {
+        alert(`Merge failed: ${e.message}`);
+    }
+}
+
+// Bind change-listeners on property checkboxes after DOM ready.
+// (Checkboxes already have inline onclick="updateBars()" from the
+// template — this is a defensive fallback in case browsers handle
+// inline-onclick + change events differently for keyboard activation.)
+document.addEventListener('change', function(e) {
+    if (e.target && e.target.classList && e.target.classList.contains('property-merge-check')) {
+        updateBars(e.target);  // Pass the changed checkbox for incremental Set update
+    }
+});
 </script>
 
 </body>
