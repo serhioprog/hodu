@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from loguru import logger
-from sqlalchemy import text, select, update
+from sqlalchemy import text, select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
@@ -472,7 +472,16 @@ class InternalDuplicateDetector:
         if locked_cluster is not None:
             for p in props:
                 p.cluster_id = locked_cluster.id
-            locked_cluster.member_count = len(props)
+            # Bug #66 fix: recompute member_count from the authoritative source
+            # (Property.cluster_id), not from len(props). The connected component
+            # being promoted may contain only a SUBSET of the locked cluster's
+            # true membership; using len(props) would undercount and leave
+            # member_count desynced from reality until the next cluster-write.
+            await session.flush()
+            locked_cluster.member_count = (await session.execute(
+                select(func.count(Property.id))
+                .where(Property.cluster_id == locked_cluster.id)
+            )).scalar_one()
             locked_cluster.ai_score = max_sim
             locked_cluster.phash_matches = max_phash
             locked_cluster.updated_at = utcnow()
@@ -495,7 +504,7 @@ class InternalDuplicateDetector:
         if target_cluster is None:
             target_cluster = PropertyCluster(
                 status=new_status,
-                member_count=len(props),
+                member_count=len(props),       # corrected after flush below (Bug #66)
                 ai_score=max_sim,
                 phash_matches=max_phash,
             )
@@ -503,13 +512,26 @@ class InternalDuplicateDetector:
             await session.flush()
         else:
             target_cluster.status        = new_status
-            target_cluster.member_count  = len(props)
+            # member_count is recomputed after the cluster_id assignment loop
+            # below (Bug #66) — see comment there for rationale.
             target_cluster.ai_score      = max_sim
             target_cluster.phash_matches = max_phash
             target_cluster.updated_at    = utcnow()
 
         for p in props:
             p.cluster_id = target_cluster.id
+
+        # Bug #66 fix: recompute member_count from the authoritative source
+        # (Property.cluster_id) after cluster_id reassignments are flushed.
+        # When target_cluster pre-existed, len(props) only captures the current
+        # connected component and misses pre-existing members not in this run's
+        # edges. For a freshly created cluster this resolves to the same value
+        # as the initial len(props), so the recompute is harmless there.
+        await session.flush()
+        target_cluster.member_count = (await session.execute(
+            select(func.count(Property.id))
+            .where(Property.cluster_id == target_cluster.id)
+        )).scalar_one()
 
         if new_status == ClusterStatus.APPROVED:
             out["approved_merged"] = 1
