@@ -46,6 +46,7 @@ from loguru import logger
 from selectolax.lexbor import LexborHTMLParser, LexborNode
 
 from src.scrapers.base import BaseScraper
+from src.scrapers._enrichment_mixin import EnrichmentMixin
 from src.models.schemas import PropertyTemplate
 
 
@@ -202,7 +203,19 @@ def _split_label_value(li_text: str) -> Tuple[str, Optional[str]]:
 # Scraper
 # =============================================================
 
-class GLRealEstateScraper(BaseScraper):
+class GLRealEstateScraper(EnrichmentMixin, BaseScraper):
+    """
+    GL Real Estate — the REFERENCE scraper for the canonical 7-step
+    enrichment pattern. Its inline _apply_nlp_fallback + _NLP_TO_STRUCTURAL
+    map were the original blueprint that became EnrichmentMixin.
+
+    Inheriting EnrichmentMixin is purely for consistency with the other
+    8 scrapers — GL's own _apply_nlp_fallback method shadows the mixin's
+    via Python MRO, so behaviour is unchanged. Available mixin helpers
+    like _passes_quality_gate are gained for visibility.
+
+    No deletions: "что работает — не портим".
+    """
 
     def __init__(self):
         super().__init__()
@@ -329,6 +342,13 @@ class GLRealEstateScraper(BaseScraper):
             #   Runs only over description (not greedy DOM text) to avoid
             #   leaking into extra_features from random page chrome.
             self._apply_nlp_fallback(data)
+
+            # ----- 6. Quality Gate (log-only — daily_sync handles retry policy)
+            if not self._passes_quality_gate(data.get("description")):
+                logger.warning(
+                    f"[{self.source_domain}] description below quality gate "
+                    f"for {url}"
+                )
 
             return data
 

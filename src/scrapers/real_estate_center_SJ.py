@@ -5,6 +5,7 @@ from loguru import logger
 from selectolax.lexbor import LexborHTMLParser
 from src.models.schemas import PropertyTemplate
 from src.scrapers.base import BaseScraper
+from src.scrapers._enrichment_mixin import EnrichmentMixin
 from src.scrapers.fetchers import fetcher_funnel
 from src.scrapers.fetchers.exceptions import FetcherError
 
@@ -41,7 +42,26 @@ _DEFAULT_FILTER_FIELDS = {
 }
 
 
-class RealEstateCenterScraper(BaseScraper):
+class RealEstateCenterScraper(EnrichmentMixin, BaseScraper):
+    """
+    realestatecenter.gr scraper.
+
+    KEEPS its existing inline NLP fallback (line ~338) which runs
+    self.extractor.analyze_full_text over `description + greedy_text`.
+    That richer input (greedy_text adds DOM-level "miscellaneous" text)
+    has been shown to extract more amenity signals than description alone.
+
+    Inheriting EnrichmentMixin makes helpers available WITHOUT removing
+    the inline NLP — non-destructive upgrade. Helpers now usable:
+      * _passes_quality_gate() — call at end for visibility (added below)
+      * _og_description_fallback() — already implemented inline (line 224)
+      * _to_int_euro_safe() / _strip_strikethrough() — available if needed
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.source_domain = "realestatecenter.gr"
+
     def __init__(self):
         super().__init__()
         self.source_domain = "realestatecenter.gr"
@@ -335,15 +355,40 @@ class RealEstateCenterScraper(BaseScraper):
                     details["longitude"] = float(script_match.group(2))
 
             # ── 8. Run the smart NLP extractor over description + greedy text
+            # Using greedy_text (DOM-level fallback text) makes this richer
+            # than the mixin's description-only NLP, so we keep this inline.
             full_text_for_nlp = f"{details['description']} \n {greedy_text}"
             smart_data = self.extractor.analyze_full_text(full_text_for_nlp)
 
+            # Apply primary-column patches the same "fill only if missing" way
             for key, value in smart_data.items():
-                if value is not None:
-                    if key == "extra_features":
-                        details["extra_features"].update(value)
-                    elif not details.get(key):
-                        details[key] = value
+                if value is None or key == "extra_features":
+                    continue
+                if not details.get(key):
+                    details[key] = value
+
+            # extra_features merge — WITH semantic dedup via mixin's map.
+            # Without dedup, "parking" (NLP) and "garage" (structural) would
+            # both land in extras as visual duplicates. With dedup,
+            # structural slug wins, NLP variant is skipped.
+            nlp_extras = smart_data.get("extra_features") or {}
+            if nlp_extras:
+                existing = set(details["extra_features"].keys())
+                for k, v in nlp_extras.items():
+                    if k in existing:
+                        continue
+                    related = self._NLP_TO_STRUCTURAL.get(k, set())
+                    if related & existing:
+                        continue
+                    details["extra_features"][k] = v
+
+            # ── 9. Quality Gate — log-only, daily_sync's _should_redeep
+            # will trigger a retry if the description is below threshold.
+            if not self._passes_quality_gate(details.get("description")):
+                logger.warning(
+                    f"[{self.source_domain}] description below quality gate "
+                    f"for {url}"
+                )
 
             return details
 
