@@ -99,7 +99,9 @@ class PowerObjectGenerator:
                     continue
 
                 is_dup = any(
-                    acc and PHashService.hamming(h, acc) <= settings.PHASH_HAMMING_THRESHOLD
+                    acc and PHashService.is_same_image(
+                        h, acc, threshold=settings.PHASH_HAMMING_THRESHOLD
+                    )
                     for acc in accepted_hashes
                 )
                 if not is_dup:

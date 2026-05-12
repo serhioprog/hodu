@@ -85,10 +85,30 @@ class Settings(BaseSettings):
     block the production pipeline.
     Set in .env: USE_NEW_DUPLICATE_ENGINE=true to enable."""
 
-    # === INTERNAL MATCHER THRESHOLDS ================================
+# === INTERNAL MATCHER THRESHOLDS ================================
     SIM_AUTO_MERGE: float = 0.985
     SIM_REJECT: float = 0.920
+
     PHASH_HAMMING_THRESHOLD: int = 3
+    """
+    STRICT hamming threshold (in bits) for IN-PROPERTY pHash dedup.
+
+    Used by PowerObjectGenerator when building the canonical image set
+    of a cluster — we want only visually distinct photos to accumulate
+    in the power object, so the threshold is tight (~5% bit difference).
+
+    NOTE: This is intentionally different from PHashService.HAMMING_THRESHOLD
+    (= 6 bits, ~9% difference), which is the LOOSE threshold used by the
+    duplicate detector when comparing photos ACROSS two properties
+    (tolerant to JPEG re-compression and cropping across sites).
+
+    Two values, two purposes:
+      - 3 bits (here): strict, for de-duplicating photos that should be
+        treated as the same image within a single property's photo set.
+      - 6 bits (in PHashService): loose, for finding duplicate-photo
+        evidence between two different properties from different scrapers.
+    """
+
     PHASH_MIN_MATCHES_FOR_BYPASS: int = 2
     MAX_PAIRS_PER_PROPERTY: int = 50
     PHASH_MIN_MATCHES:       int   = 2

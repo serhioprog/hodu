@@ -71,11 +71,12 @@ class PHashService:
     @staticmethod
     def _hamming_distance(hash_a: str, hash_b: str) -> int:
         """
-        Hamming distance between two hex pHash strings.
+        Hamming distance between two hex pHash strings (private).
 
         Both strings must be the same length (16 hex chars for 64-bit pHash).
-        Returns int distance in bits. Returns sys.maxsize on parse failure
-        so the caller's threshold check fails safely.
+        Returns int distance in bits. Returns 1<<30 on parse failure so
+        the caller's threshold check fails safely (i.e. treats unparseable
+        hashes as "infinitely different").
         """
         if not hash_a or not hash_b or len(hash_a) != len(hash_b):
             return 1 << 30  # treat as "infinitely different"
@@ -85,9 +86,35 @@ class PHashService:
             return 1 << 30
 
     @classmethod
-    def is_same_image(cls, hash_a: str, hash_b: str) -> bool:
-        """True iff the two hashes are within HAMMING_THRESHOLD bits."""
-        return cls._hamming_distance(hash_a, hash_b) <= cls.HAMMING_THRESHOLD
+    def hamming_distance(cls, hash_a: str, hash_b: str) -> int:
+        """
+        Public-facing hamming distance between two pHash hex strings.
+
+        Wraps the internal _hamming_distance. Returns 1<<30 on parse
+        failure so any threshold check fails safely.
+        """
+        return cls._hamming_distance(hash_a, hash_b)
+
+    @classmethod
+    def is_same_image(
+        cls,
+        hash_a: str,
+        hash_b: str,
+        threshold: int | None = None,
+    ) -> bool:
+        """
+        True iff the two hashes are within `threshold` bits.
+
+        threshold defaults to cls.HAMMING_THRESHOLD (6) — the "loose" value
+        used by the detector for cross-property duplicate scoring (tolerant
+        to JPEG re-compression across different sites).
+
+        Callers doing in-property dedup (e.g. PowerObjectGenerator) should
+        pass a stricter value such as settings.PHASH_HAMMING_THRESHOLD (3)
+        to keep only visually distinct photos.
+        """
+        t = threshold if threshold is not None else cls.HAMMING_THRESHOLD
+        return cls._hamming_distance(hash_a, hash_b) <= t
 
     @classmethod
     def count_matching(
