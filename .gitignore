@@ -1,57 +1,57 @@
 
-# === Python ===
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
+!docs/**/*.png
+!src/web/static/**/*.jpeg
+!src/web/static/**/*.jpg
+!src/web/static/**/*.png
+# === Allow specific images that ARE part of repo ===
+# === Docker volumes ===
 # === Editor backups ===
+# === Environment ===
+# === IDE ===
+# === Logs ===
+# === Misc artifacts ===
+# === Python ===
+# === Scraped media (regenerated daily) ===
+# Claude Code metadata
+# Migration backup files
+# Scratch experiments
 *.bak
-*.swp
+*.bak*
+*.csv
+*.egg-info/
+*.gif
+*.iml
+*.jpeg
+*.jpg
+*.log
+*.png
+*.pyc
+*.pyd
+*.pyo
 *.swo
+*.swp
+*.xlsx
 *~
 .DS_Store
-Thumbs.db
-# === Environment ===
-.env
-.env.local
-.env.*.local
-venv/
-env/
-.venv/
-# === Logs ===
-logs/
-*.log
-# === Scraped media (regenerated daily) ===
-data/media/
-# === IDE ===
-.vscode/
-.idea/
-*.iml
-# === Docker volumes ===
-data/postgres/
-data/pgdata/
-# === Misc artifacts ===
-*.png
-*.jpg
-*.jpeg
-*.gif
-mintty.*
-# === Allow specific images that ARE part of repo ===
-!src/web/static/**/*.png
-!src/web/static/**/*.jpg
-!src/web/static/**/*.jpeg
-!docs/**/*.png
-data/*.xlsx
-*.xlsx
-~$*.xlsx
-*.csv
-# Claude Code metadata
+.Python
 .claude/
-# Scratch experiments
+.env
+.env.*.local
+.env.local
+.idea/
+.mypy_cache/
+.pytest_cache/
+.venv/
+.vscode/
+Thumbs.db
+__pycache__/
+data/*.xlsx
+data/media/
+data/pgdata/
+data/postgres/
+env/
 experiments/
-# Migration backup files
-*.bak*
+logs/
+mintty.*
+venv/
+~$*.xlsx

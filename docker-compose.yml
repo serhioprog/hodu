@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -10,7 +8,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"   # Bug #6: bind only to loopback (was 5432:5432 = all interfaces)
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -49,6 +47,15 @@ services:
     volumes:
       - ./src:/app/src
       - ./data:/app/data
+      - ./logs:/app/logs                                # Bug #7: persist scraper logs across restarts
+      - playwright_cache:/root/.cache/ms-playwright     # Bug #8: cache Chromium binaries (~150MB)
+    healthcheck:                                        # Bug #63: container-level liveness
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.settimeout(3); s.connect(('localhost', 8000)); s.close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
 volumes:
   postgres_data:
+  playwright_cache:    # Bug #8: named volume for Playwright Chromium binaries
