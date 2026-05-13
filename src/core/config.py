@@ -2,6 +2,7 @@
 Central settings. Reads from .env (see .env.example).
 All services import 'settings' from here — single source of truth.
 """
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -44,6 +45,12 @@ class Settings(BaseSettings):
     SMTP_USER: str | None = None
     SMTP_PASS: str | None = None
     APP_URL: str = "http://localhost:8000"
+
+    TOKEN_TTL_HOURS: int = 48
+    """Lifetime of magic-link auth tokens in hours. Used by notifier.py
+    when staging AuthToken rows and by /auth/{token} handler for
+    expiry enforcement. Was hardcoded module-level constant in
+    notifier.py, moved here for tunability (Bug #34)."""
 
     # === OPENAI / MDM AI PIPELINE ===================================
     OPENAI_API_KEY: str  # Обязательное поле! Без него Pydantic не даст запустить сервер
@@ -89,6 +96,12 @@ class Settings(BaseSettings):
     SIM_AUTO_MERGE: float = 0.985
     SIM_REJECT: float = 0.920
 
+    UNIQUE_SIM_THRESHOLD: float = 0.95
+    """Threshold used by ExternalUniqueFinder. If any external candidate
+    has similarity >= this value, the cluster is considered NOT unique
+    (already known to the external system). Was hardcoded in
+    external_unique_finder.py, moved here for tunability (Bug #15)."""
+
     PHASH_HAMMING_THRESHOLD: int = 3
     """
     STRICT hamming threshold (in bits) for IN-PROPERTY pHash dedup.
@@ -109,9 +122,13 @@ class Settings(BaseSettings):
         evidence between two different properties from different scrapers.
     """
 
-    PHASH_MIN_MATCHES_FOR_BYPASS: int = 2
     MAX_PAIRS_PER_PROPERTY: int = 50
-    PHASH_MIN_MATCHES:       int   = 2
+    PHASH_MIN_MATCHES: int = 2
+    """Minimum number of matching pHashes between two properties for a
+    'phash bypass' match (skip embedding similarity check). Used in
+    internal_duplicate_detector. Note: a duplicate constant
+    PHASH_MIN_MATCHES_FOR_BYPASS used to exist here too but was never
+    referenced anywhere — removed for clarity (Bug #61)."""
 
     PHASH_STOCK_MIN_PROPS: int = 5
     """Hash counted on more than N distinct properties is treated as 'stock photo'
@@ -141,6 +158,23 @@ class Settings(BaseSettings):
     SESSION_COOKIE_NAME: str = "hodu_session"
     CSRF_COOKIE_NAME: str = "hodu_csrf"
     COOKIE_SECURE: bool = False  # set True behind HTTPS
+
+    @field_validator("CSRF_SECRET")
+    @classmethod
+    def _csrf_secret_must_be_overridden(cls, v: str) -> str:
+        """Bug #5: refuse to boot if CSRF_SECRET is still the placeholder.
+
+        Generate a random one with:
+            python -c "import secrets; print(secrets.token_urlsafe(64))"
+        and put it in .env as CSRF_SECRET=<value>.
+        """
+        if v == "change-me-in-production":
+            raise ValueError(
+                "CSRF_SECRET still has the default placeholder value. "
+                "Override it in .env. Generate with: "
+                'python -c "import secrets; print(secrets.token_urlsafe(64))"'
+            )
+        return v
 
     model_config = SettingsConfigDict(
         env_file=".env",

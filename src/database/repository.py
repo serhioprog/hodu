@@ -33,7 +33,6 @@ _PROTECTED_FIELDS: frozenset[str] = frozenset({
     "image_phashes",     # managed by save_media_records
     "details_fetch_attempts",
     "last_details_fetch_at",
-    "verdict_locked",    # not on Property, kept here for safety
 })
 
 

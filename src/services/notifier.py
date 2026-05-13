@@ -29,9 +29,6 @@ from src.database.db import async_session_maker
 from src.models.domain import Agent, AuthToken
 
 
-TOKEN_TTL_HOURS = 48
-
-
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -66,7 +63,7 @@ async def _stage_tokens(
 ) -> list[tuple[Agent, AuthToken]]:
     """Create AuthToken rows in-memory (not flushed/committed yet)."""
     staged: list[tuple[Agent, AuthToken]] = []
-    expires_at = _utcnow() + timedelta(hours=TOKEN_TTL_HOURS)
+    expires_at = _utcnow() + timedelta(hours=settings.TOKEN_TTL_HOURS)
     for agent in agents:
         token = AuthToken(
             agent_id=agent.id,

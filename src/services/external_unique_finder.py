@@ -87,7 +87,6 @@ class GenericHttpAdapter:
 # Finder
 # =============================================================
 class ExternalUniqueFinder:
-    UNIQUE_SIM_THRESHOLD = 0.95   # если найдено что-то >= 0.95 → не уникально
 
     def __init__(
         self,
@@ -220,7 +219,7 @@ class ExternalUniqueFinder:
             })
             rows = res.fetchall()
             top_sim = rows[0].similarity if rows else 0.0
-            is_unique = top_sim < self.UNIQUE_SIM_THRESHOLD
+            is_unique = top_sim < settings.UNIQUE_SIM_THRESHOLD
             logger.info(f"[ExtFinder] top_sim={top_sim:.3f} is_unique={is_unique}")
 
         # 5. Аудит на cluster
