@@ -33,7 +33,7 @@ from tenacity            import (
     retry, stop_after_attempt, wait_exponential, retry_if_exception_type,
 )
 
-from src.core.config                          import settings
+from src.core.config import settings, should_verify_tls
 from src.scrapers.fetchers.base_fetcher       import BaseFetcher, FetchResult
 from src.scrapers.fetchers.exceptions         import (
     CloudflareBlock, HttpError, FetcherTimeout, EmptyResponse,
@@ -128,12 +128,12 @@ class Stage0CurlCffiFetcher(BaseFetcher):
                 if method == "GET":
                     resp = await session.get(
                         url, params=params, headers=req_headers,
-                        proxy=self._proxy, timeout=req_timeout, verify=False,
+                        proxy=self._proxy, timeout=req_timeout, verify=should_verify_tls(url),
                     )
                 else:  # POST
                     resp = await session.post(
                         url, data=data, headers=req_headers,
-                        proxy=self._proxy, timeout=req_timeout, verify=False,
+                        proxy=self._proxy, timeout=req_timeout, verify=should_verify_tls(url),
                     )
         except (TimeoutError, Exception) as e:
             # curl_cffi raises a variety of types on network failure.

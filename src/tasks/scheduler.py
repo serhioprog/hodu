@@ -171,8 +171,11 @@ async def update_schedule() -> None:
         )
 
         if not scheduler.get_job("job_update_schedule"):
-            scheduler.add_job(update_schedule, "interval",
-                              minutes=10, id="job_update_schedule")
+            scheduler.add_job(
+                update_schedule, "interval",
+                minutes=10, id="job_update_schedule",
+                misfire_grace_time=600,  # Bug #27
+            )
 
         logger.info(f"🔄 schedule refreshed: sync={sync_time} report={report_time} probe=Mon 04:00")
 
@@ -180,11 +183,20 @@ async def update_schedule() -> None:
         logger.error(f"schedule refresh failed (keeping previous): {e}")
 
 
-def _upsert_job(job_id: str, func, trigger) -> None:
+def _upsert_job(job_id: str, func, trigger, *, misfire_grace_time: int = 600) -> None:
+    """Bug #27: APScheduler's default behaviour drops missed jobs entirely.
+    With misfire_grace_time=600s (10 min), if the process restarts within
+    10 minutes of a scheduled fire time, the job catches up. Default keeps
+    cron jobs reliable across container reboots that overlap with cron
+    moments (e.g. compose recreate at 00:00:30 would have skipped the
+    00:01 daily_sync — now it catches up on restart)."""
     if scheduler.get_job(job_id):
         scheduler.reschedule_job(job_id, trigger=trigger)
     else:
-        scheduler.add_job(func, trigger, id=job_id)
+        scheduler.add_job(
+            func, trigger, id=job_id,
+            misfire_grace_time=misfire_grace_time,
+        )
 
 
 # =============================================================

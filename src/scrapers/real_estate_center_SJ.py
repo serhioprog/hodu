@@ -122,10 +122,19 @@ class RealEstateCenterScraper(EnrichmentMixin, BaseScraper):
 
             try:
                 data = response.json()
-            except Exception:
+            except Exception as e:
+                # Bug #11: surface response body excerpt so we can SEE the
+                # WP error if a plugin update added a new required field.
+                # Without this, "non-JSON body" gives no clue what's
+                # wrong — operator has to manually capture/inspect.
+                body_excerpt = (response.text or "")[:300].replace("\n", " ")
                 logger.warning(
                     f"[{self.source_domain}] page {page_no}: non-JSON body "
-                    f"({len(response.text)} chars), stopping pagination"
+                    f"({len(response.text)} chars), stopping pagination. "
+                    f"Parse error: {e}. "
+                    f"Body excerpt: {body_excerpt!r}. "
+                    f"If WP plugin started requiring new fields, update "
+                    f"_DEFAULT_FILTER_FIELDS at top of this file."
                 )
                 break
 

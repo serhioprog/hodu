@@ -21,6 +21,25 @@ class Settings(BaseSettings):
     # === HTTP / PROXY ===============================================
     PROXY_URL: str | None = None
 
+    # --- TLS verification policy (Bug #4) -------------------------
+    TLS_VERIFY_DEFAULT: bool = False
+    """Whether to verify TLS certs on outbound scraping requests by
+    default. Bug #4: currently False to preserve historical behaviour —
+    many Greek real-estate sites are served with broken cert chains
+    (intermediate cert issues, expired chains alongside valid leaf).
+    Production hardening path: investigate each scraped domain's cert
+    state, populate TLS_VERIFY_DOMAIN_OVERRIDES with known-broken
+    domains as exceptions, then flip this default to True. Until then
+    we accept the global MITM risk in exchange for working scrapers.
+    Tracked as Sprint 7+ hardening task."""
+
+    TLS_VERIFY_DOMAIN_OVERRIDES: dict[str, bool] = {}
+    """Per-domain TLS verify override. Key = bare domain (no scheme,
+    no www), Value = True (verify) or False (skip). Empty dict means
+    'use TLS_VERIFY_DEFAULT for everything'. Future state will be
+    TLS_VERIFY_DEFAULT=True with explicit entries here for the few
+    domains we know have broken certs. Bug #4."""
+
     # === FETCH FUNNEL ===============================================
     # Sprint 1 introduces a multi-stage fetch chain. These settings let
     # the orchestrator be tuned without code changes.
@@ -199,3 +218,38 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+def should_verify_tls(url_or_domain: str) -> bool:
+    """Decide whether to verify TLS for a given URL or bare domain.
+    
+    Bug #4: centralizes the TLS-verify decision (was hardcoded False at
+    every call site). Lookup priority:
+      1. Exact domain match in TLS_VERIFY_DOMAIN_OVERRIDES
+      2. Fallback to TLS_VERIFY_DEFAULT
+    
+    Strips 'www.' prefix and scheme/path before lookup so a single
+    config entry like 'example.com' matches both 'www.example.com'
+    and 'https://example.com/foo'.
+    
+    Examples (with TLS_VERIFY_DEFAULT=False, no overrides):
+        should_verify_tls("https://example.com/foo") -> False
+        should_verify_tls("example.com")             -> False
+    
+    With TLS_VERIFY_DEFAULT=True, TLS_VERIFY_DOMAIN_OVERRIDES={
+        'broken-site.gr': False
+    }:
+        should_verify_tls("https://broken-site.gr/x") -> False
+        should_verify_tls("good-site.gr")             -> True
+    """
+    from urllib.parse import urlparse
+    raw = url_or_domain.strip().lower()
+    if "://" in raw:
+        host = urlparse(raw).netloc
+    else:
+        host = raw.split("/", 1)[0]  # tolerate "domain/path" too
+    if host.startswith("www."):
+        host = host[4:]
+    # Strip port if present
+    if ":" in host:
+        host = host.split(":", 1)[0]
+    return settings.TLS_VERIFY_DOMAIN_OVERRIDES.get(host, settings.TLS_VERIFY_DEFAULT)

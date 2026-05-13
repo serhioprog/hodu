@@ -248,10 +248,10 @@ class FetchFunnel:
                 continue
 
             # ── Success path ──
-            await self._record_attempt(
+            asyncio.create_task(self._record_attempt(
                 domain, url, stage_num, success=True,
                 error_code=None, error_text=None, elapsed_ms=result.elapsed_ms,
-            )
+            ))
             # Only promote on regular GET/POST success. WP_AJAX successes
             # are expected to be on stage 1+ and don't reflect the domain's
             # general crawlability.

@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 from loguru import logger
 from curl_cffi.requests import AsyncSession
+from src.core.config import settings, should_verify_tls
 
 # Подключаем сервис для вычисления перцептивного хэша (для поиска дубликатов)
 from src.services.phash_service import PHashService
@@ -50,7 +51,7 @@ class MediaDownloader:
                         content = file_path.read_bytes()
                     else:
                         # Если файла нет — скачиваем
-                        response = await session.get(url, timeout=15, verify=False)
+                        response = await session.get(url, timeout=15, verify=should_verify_tls(url))
                         if response.status_code == 200:
                             content = response.content
                             # Сохраняем файл на диск с помощью write_bytes (более короткий синтаксис)
