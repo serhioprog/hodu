@@ -312,8 +312,8 @@ async def _run_scrapers(global_stats: Dict[str, int]) -> List[DomainSyncReport]:
         SithoniaRentalSalesScraper(),
         HalkidikiEstateScraper(),
         EngelVoelkersScraper(),
-        GrekodomDevelopmentScraper(),
         HalkidikiRealEstateScraper(),
+        GrekodomDevelopmentScraper(),
     ]
 
     domain_reports: List[DomainSyncReport] = []
