@@ -222,7 +222,7 @@ class RealEstateCenterScraper(EnrichmentMixin, BaseScraper):
             details = {
                 "description": "", "price": None, "size_sqm": None, "land_size_sqm": None,
                 "bedrooms": None, "bathrooms": None, "year_built": None, "area": None,
-                "subarea": None, "category": "Villa", "levels": None, "site_last_updated": None,
+                "subarea": None, "category": None, "levels": None, "site_last_updated": None,
                 "latitude": None, "longitude": None, "images": [], "extra_features": {}
             }
 

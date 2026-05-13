@@ -48,14 +48,25 @@ class PropertyCanonicalizer:
 
     @classmethod
     def from_property(cls, prop: Property) -> CanonicalFacts:
-        # Pydantic ждет только True/False, а скрапер иногда приносит строки ("Forest", "2")
-        # Поэтому мы принудительно конвертируем всё в безопасный bool:
+        # Pydantic ждет только True/False для CanonicalFacts.features.
+        # Bug #18: previously coerced numeric metrics (pool_size_sqm: 50,
+        # parking_count: 4) to True bool flags. This made any property
+        # with a numeric metric appear identical in canonical text to one
+        # with a different value — pool 5m² and pool 100m² rendered as
+        # "pool_size_sqm" in features list, identical. Now we EXCLUDE
+        # numeric values from features (they're metrics, not booleans).
+        # If those signals matter for matching later, extend CanonicalFacts
+        # with a separate numeric_metrics dimension.
         safe_features = {}
         for k, v in (prop.extra_features or {}).items():
             if isinstance(v, bool):
                 safe_features[k] = v
+            elif isinstance(v, (int, float)):
+                # Skip numeric metrics — they're not feature flags. Bool
+                # coercion of e.g. 50 to True washes out value variance.
+                continue
             else:
-                # Если значение есть (не пустое и не 0) - считаем фичу присутствующей (True)
+                # String values — coerce to bool by truthiness/known negatives.
                 safe_features[k] = bool(v and str(v).lower() not in ['false', 'no', '0', 'none'])
 
         return CanonicalFacts(

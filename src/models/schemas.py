@@ -1,5 +1,7 @@
 import re
 from typing import Optional, List
+
+from loguru import logger
 from pydantic import BaseModel, field_validator
 
 class PropertyTemplate(BaseModel): # Это и есть наш "Шаблон"
@@ -24,7 +26,7 @@ class PropertyTemplate(BaseModel): # Это и есть наш "Шаблон"
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     site_last_updated: Optional[str] = None
-    status: str = "ACTIVE"
+    status: Optional[str] = None
     images: List[str] = []
 
     #лОКАЦИИ АРИСА
@@ -76,7 +78,18 @@ class PropertyTemplate(BaseModel): # Это и есть наш "Шаблон"
                     valid_prices.append(num)
                     
         if valid_prices:
-            return valid_prices[-1]
+            # Bug #9: most real-estate listings put the current price first
+            # ("€500 000 (was €600 000)" → 500000). Old "was/from" prices
+            # follow in parentheses or descriptive text. Pre-fix this returned
+            # the LAST number which was usually the OLD price. If you see
+            # this warning, the scraper selector may be picking up too much
+            # descriptive text — investigate that scraper.
+            if len(valid_prices) > 1:
+                logger.warning(
+                    f"[clean_price] multiple prices in input — taking first. "
+                    f"Found: {valid_prices}, raw input: {str(v)[:120]!r}"
+                )
+            return valid_prices[0]
             
         return None
 
