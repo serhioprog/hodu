@@ -1,6 +1,6 @@
 HALKIDIKI_REGIONS_WHITELIST = [
     # Base & Municipalities
-            "halkidiki", "chalkidiki", "khalkidhiki", "chalkidice", "khalkidiki", "halkidiki",
+            "halkidiki", "chalkidiki", "khalkidhiki", "chalkidice", "khalkidiki",
             "polygyros", "poligiros", "poliyiros", "poligyros", "polygiros",
             "nea propontida", "propontida", "propontyda",
             "kassandra", "cassandra", "kasandra", "kassandria", "kasandria",

@@ -188,13 +188,13 @@ class InternalDuplicateDetector:
             "pending":             0,
             "locked_preserved":    0,
             "orphans_removed":     0,
-            "delisted_cleaned":    0,
+            "sold_cleaned":    0,
             "vision_resolved":     0,   # Vision verdicts honored (approve+reject)
             "vision_skipped":      0,   # low-confidence or call failed
             "vision_feedback_added": 0, # rejects written to AIDuplicateFeedback
         }
 
-        stats["delisted_cleaned"] = await self._release_delisted_clusters(session)
+        stats["sold_cleaned"] = await self._release_sold_clusters(session)
 
         stock_phashes = await self._build_stock_phashes(session)
         logger.info(
@@ -290,7 +290,11 @@ class InternalDuplicateDetector:
         # (high-similarity ambiguous pairs are most likely actual dups —
         # spend Vision budget on them first)
         pending_edges = [e for e in edges if e.verdict == "merge_pending"]
-        pending_edges.sort(key=lambda e: -e.similarity)
+        # Bug #58: deterministic order when similarities tie. Previously
+        # ties produced non-deterministic Vision budget allocation (which
+        # 50 of the tied pairs got the budget depended on iteration order).
+        # Stable tiebreaker: prop_a_id alphabetical, then prop_b_id.
+        pending_edges.sort(key=lambda e: (-e.similarity, str(e.prop_a_id), str(e.prop_b_id)))
         budget = pending_edges[: settings.VISION_MAX_PAIRS_PER_RUN]
 
         logger.info(
@@ -540,7 +544,11 @@ class InternalDuplicateDetector:
 
         return out
 
-    async def _release_delisted_clusters(self, session: AsyncSession) -> int:
+    async def _release_sold_clusters(self, session: AsyncSession) -> int:
+        """Detach SOLD properties from their clusters. Bug #46: this was
+        misnamed _release_delisted_clusters but actually filters on SOLD
+        status only (DELISTED clusters are released elsewhere via the
+        revival flow in daily_sync). Renamed to match what it does."""
         result = await session.execute(
             update(Property)
             .where(

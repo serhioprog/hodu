@@ -261,44 +261,6 @@ async def _collect_funnel_stats(since: datetime) -> dict:
     except Exception as e:
         logger.warning(f"[reporter] funnel stats query failed: {e}")
         return {}
-
-# =============================================================
-# Fetch funnel statistics — per-stage success counts and avg
-# latency over the last 24h. Surfaces in the daily Telegram
-# summary so operators can see funnel health at a glance.
-# =============================================================
-async def _collect_funnel_stats(since: datetime) -> dict:
-    """
-    Returns: {stage_num: {ok, fail, avg_ms}, ...}
-
-    Aggregates fetch_attempts since `since` into per-stage buckets.
-    Empty dict on DB error or no data — never raises.
-    """
-    try:
-        async with async_session_maker() as session:
-            rows = (await session.execute(sql_text("""
-                SELECT
-                  stage,
-                  COUNT(*) FILTER (WHERE success)         ::int AS ok,
-                  COUNT(*) FILTER (WHERE NOT success)     ::int AS fail,
-                  AVG(duration_ms) FILTER (WHERE success) ::int AS avg_ms
-                FROM fetch_attempts
-                WHERE created_at >= :since
-                GROUP BY stage
-                ORDER BY stage
-            """), {"since": since})).all()
-
-            return {
-                int(r.stage): {
-                    "ok":     int(r.ok or 0),
-                    "fail":   int(r.fail or 0),
-                    "avg_ms": int(r.avg_ms or 0),
-                }
-                for r in rows
-            }
-    except Exception as e:
-        logger.warning(f"[reporter] funnel stats query failed: {e}")
-        return {}
     
 # =============================================================
 # PHASE 1: scraping

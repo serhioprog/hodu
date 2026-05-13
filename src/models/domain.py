@@ -43,6 +43,14 @@ class ClusterStatus(str, enum.Enum):
     PENDING = "PENDING"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
+    """RESERVED / command-flag only. Bug #45: REJECTED is never actually
+    persisted to cluster.status — it's used as a parameter value to
+    _manual_verdict() that triggers cluster dissolution (DSU break +
+    feedback rows in ai_duplicate_feedbacks). When admin clicks 'Reject',
+    the cluster row is DELETED, not marked REJECTED. Kept in the enum
+    only because removing it would require migration + touching ~5 call
+    sites in main.py. Future: rename ClusterAction enum separate from
+    ClusterStatus state enum."""
 
 
 def utcnow() -> datetime:

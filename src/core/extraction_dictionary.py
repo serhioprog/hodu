@@ -147,13 +147,16 @@ METRICS_PATTERNS = {
 # =====================================================================
 # 2. PROPERTY TYPES
 # =====================================================================
-# ORDER MATTERS: extract_type() uses first-match-wins. Order chosen so:
-#   * Most-specific listings (Hotel) win first — hotel descriptions often
-#     mention "...and one Villa" referring to a suite, which would otherwise
-#     mis-classify the whole listing as Villa.
-#   * Land/Plot LAST — every villa listing mentions "land plot: NNNm²" or
-#     "covers 3500 sqm of land", which would falsely classify every villa
-#     as Land/Plot if checked first.
+# ORDER MATTERS as a TIE-BREAKER for extract_type() count-based scoring.
+# Bug #12: this comment previously claimed "first-match-wins" but the
+# real algorithm in extractor.extract_type is COUNT-based — type with
+# most regex hits wins; insertion order in this dict breaks ties only.
+# Order chosen so:
+#   * Most-specific listings (Hotel) listed first — when villas and
+#     hotels tie on count, hotel wins (more specific intent).
+#   * Land/Plot LAST — every villa listing mentions "land plot: NNNm²"
+#     or "covers 3500 sqm of land". If Land/Plot were earlier, ties on
+#     such phrasing would mis-classify villas. Last means villas win.
 PROPERTY_TYPES = {
     "Hotel/Commercial": [r"\b(?:hotels?|ξενοδοχεί[οα]|commercial|επαγγελματικός χώρος)\b"],
     "Maisonette":       [r"\b(?:maisonettes?|μεζονέτ[αες]|mezonet[aes])\b"],
