@@ -2,7 +2,7 @@ import re
 from typing import Optional, List
 
 from loguru import logger
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 class PropertyTemplate(BaseModel): # Это и есть наш "Шаблон"
     # Обязательные технические поля
@@ -27,8 +27,8 @@ class PropertyTemplate(BaseModel): # Это и есть наш "Шаблон"
     longitude: Optional[float] = None
     site_last_updated: Optional[str] = None
     status: Optional[str] = None
-    images: List[str] = []
-
+    images: List[str] = Field(default_factory=list)
+    
     #лОКАЦИИ АРИСА
     location_id: Optional[int] = None
     calc_prefecture: Optional[str] = None
@@ -36,7 +36,11 @@ class PropertyTemplate(BaseModel): # Это и есть наш "Шаблон"
     calc_area: Optional[str] = None
     
     # Новое поле для любых дополнительных характеристик в виде словаря (например, терраса, бассейн, вид на море и т.д.)
-    extra_features: dict = {}
+    # Bug #19/#59: use default_factory for mutable defaults; Pydantic v2
+    # handles `= {}` correctly (deep-copies on each instance) but
+    # default_factory is the explicit/canonical form and matches
+    # ai_schemas.py convention. Linters and IDEs are happier with it.
+    extra_features: dict = Field(default_factory=dict)
 
     #Переводим уровни в строку, чтобы избежать проблем с разными форматами----------------------------
     @field_validator('levels', mode='before')

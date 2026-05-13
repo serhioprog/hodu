@@ -39,6 +39,32 @@ from src.models.ai_schemas import GreekPropertyExtraction
 from src.services.llm_extractor import LLMExtractor
 from src.core.config import settings
 
+# =============================================================
+# Description-extraction lexicon (module-level, Bug #54)
+# =============================================================
+# Marketing/footer noise — Greek Exclusive embeds these widgets in
+# `.wpb_text_column` blocks the same as the property body, so length
+# alone cannot distinguish the real description from the footer.
+_NOISE_MARKERS = (
+    '"@context"',          # JSON-LD video schema
+    "videoobject",         # Schema.org type
+    "grex-premium",        # Their internal-links CSS block
+    "internal links block",
+    "related searches",
+    "youtu",               # YouTube embed labels
+    ".grex-",              # CSS selector text
+    "embedurl",
+)
+
+# Property-signal keywords — the more present, the more likely this
+# block is the actual property description. Used as primary score.
+_SIGNAL_KEYWORDS = (
+    "bedroom", "bathroom", "year built", "year of construction",
+    "pool", "garden", "sea view", "fireplace", "kitchen",
+    "villa", "land plot", "living area", "floor", "level",
+    "balcony", "terrace", "highlights", "property overview",
+    "interior layout", "outdoor", "beachfront", "facilities",
+)
 
 class GreekExclusiveScraper(BaseScraper):
     def __init__(self):
@@ -205,29 +231,6 @@ class GreekExclusiveScraper(BaseScraper):
     # ==========================================================
     # FULL DESCRIPTION EXTRACTION (NEW)
     # ==========================================================
-    # Marketing/footer noise — Greek Exclusive embeds these widgets in
-    # `.wpb_text_column` blocks the same as the property body, so length
-    # alone cannot distinguish the real description from the footer.
-    _NOISE_MARKERS = (
-        '"@context"',          # JSON-LD video schema
-        "videoobject",         # Schema.org type
-        "grex-premium",        # Their internal-links CSS block
-        "internal links block",
-        "related searches",
-        "youtu",               # YouTube embed labels
-        ".grex-",              # CSS selector text
-        "embedurl",
-    )
-
-    # Property-signal keywords — the more present, the more likely this
-    # block is the actual property description. Used as primary score.
-    _SIGNAL_KEYWORDS = (
-        "bedroom", "bathroom", "year built", "year of construction",
-        "pool", "garden", "sea view", "fireplace", "kitchen",
-        "villa", "land plot", "living area", "floor", "level",
-        "balcony", "terrace", "highlights", "property overview",
-        "interior layout", "outdoor", "beachfront", "facilities",
-    )
 
     @classmethod
     def _extract_full_description(cls, parser: LexborHTMLParser) -> str:
@@ -263,10 +266,10 @@ class GreekExclusiveScraper(BaseScraper):
 
             lower = txt.lower()
             # Hard reject: marketing/footer markers
-            if any(noise in lower for noise in cls._NOISE_MARKERS):
+            if any(noise in lower for noise in _NOISE_MARKERS):
                 continue
 
-            signal = sum(1 for kw in cls._SIGNAL_KEYWORDS if kw in lower)
+            signal = sum(1 for kw in _SIGNAL_KEYWORDS if kw in lower)
             wpb_blocks.append((signal, len(txt), txt))
 
         if wpb_blocks:
