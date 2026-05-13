@@ -423,6 +423,17 @@ class AIDuplicateFeedback(Base):
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
+    # --- Sprint 6 Phase A: structured rejection reasoning (migration 014) ---
+    # reason_attributes: subset of the 9-attribute taxonomy (see
+    # src/database/feedback_repository.py:VALID_REASON_ATTRIBUTES) admin
+    # cited as the reason this pair is NOT a duplicate. Empty list for
+    # legacy rows (feedback_source='migration').
+    # feedback_source: provenance — 'admin_reject' / 'manual_split' /
+    # 'cluster_dissolve' / 'migration'. See migration 014 column comment.
+    reason_attributes = Column(JSONB, nullable=False, server_default="[]")
+    reason_text       = Column(Text, nullable=True)
+    feedback_source   = Column(String(20), nullable=False, server_default="admin_reject")
+
     __table_args__ = (
         UniqueConstraint('prop_a_id', 'prop_b_id', name='uix_ai_feedback_pair'),
     )
