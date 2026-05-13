@@ -9,7 +9,7 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import FastAPI, Form, HTTPException, Query, Request, BackgroundTasks
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from loguru import logger
@@ -22,6 +22,14 @@ from src.models.domain import AIDuplicateFeedback
 
 from src.core.config import settings
 from src.database.db import async_session_maker
+from src.database.feedback_repository import (
+    record_feedback_for_cluster_rejection,
+    record_feedback_for_property_removal,
+    fetch_dissolved_feedbacks,
+    count_dissolved_feedbacks,
+    VALID_REASON_ATTRIBUTES,
+    VALID_FEEDBACK_SOURCES,
+)
 from src.models.domain import (
     Agent, AgentDevice, AuthToken, ClusterStatus,
     PowerProperty, Property, PropertyCluster, PropertyStatus,
@@ -1034,18 +1042,69 @@ async def admin_cluster_approve(cluster_id: str, request: Request):
 
 
 @app.post("/admin/clusters/{cluster_id}/reject")
-async def admin_cluster_reject(cluster_id: str, request: Request):
+async def admin_cluster_reject(
+    cluster_id: str,
+    request: Request,
+    reason_attributes: str = Form(""),
+    reason_text: str = Form(""),
+):
+    """
+    Reject cluster (= dissolve it and record all pairs as NOT-duplicate
+    feedback). Sprint 6 Phase A: accepts optional structured reasoning
+    so Phase C ML training can learn from WHY the admin rejected.
+
+    reason_attributes: comma-separated taxonomy keys (see
+    VALID_REASON_ATTRIBUTES in src/database/feedback_repository.py).
+    reason_text: free-form admin note, ≤1000 chars (truncated).
+    Both default to empty → existing callers behave identically.
+    """
     async with async_session_maker() as session:
         admin = await get_current_admin(request, session)
         if not admin:
             raise HTTPException(status_code=403)
+
+        attrs = [a.strip() for a in reason_attributes.split(",") if a.strip()]
+        text_clean = reason_text.strip() or None
+
+        if attrs or text_clean:
+            # Structured-feedback write happens BEFORE the dissolve so the
+            # upsert inserts rows with reason_attributes/feedback_source
+            # set. The bulk INSERT inside _dissolve_cluster_with_feedback
+            # then uses ON CONFLICT DO NOTHING — it no-ops on these rows
+            # and the structured reasoning is preserved.
+            members = (await session.execute(
+                select(Property).where(Property.cluster_id == cluster_id)
+            )).scalars().all()
+            n_written = await record_feedback_for_cluster_rejection(
+                session, members,
+                reason_attributes=attrs,
+                reason_text=text_clean,
+            )
+            logger.info(
+                f"[admin/reject] cluster {cluster_id} → wrote {n_written} feedback rows "
+                f"(attrs={attrs}, text_len={len(text_clean or '')})"
+            )
+
         await _manual_verdict(session, admin, cluster_id, ClusterStatus.REJECTED)
     return {"status": "ok"}
 
 
 @app.post("/admin/clusters/{cluster_id}/remove/{property_id}")
-async def admin_cluster_remove_member(cluster_id: str, property_id: str, request: Request):
-    """Хирургическое удаление одного объекта из кластера"""
+async def admin_cluster_remove_member(
+    cluster_id: str,
+    property_id: str,
+    request: Request,
+    reason_attributes: str = Form(""),
+    reason_text: str = Form(""),
+):
+    """Хирургическое удаление одного объекта из кластера.
+
+    Sprint 6 Phase A: accepts optional reason_attributes (comma-separated
+    taxonomy keys) and reason_text (free-form note ≤1000 chars). Feedback
+    rows for (removed, each remaining) are written via
+    record_feedback_for_property_removal with feedback_source='manual_split'.
+    Both reason fields are optional — existing callers behave identically.
+    """
     async with async_session_maker() as session:
         admin = await get_current_admin(request, session)
         if not admin:
@@ -1054,26 +1113,109 @@ async def admin_cluster_remove_member(cluster_id: str, property_id: str, request
         # Ищем объект и отвязываем его от кластера
         q_prop = select(Property).where(Property.id == property_id, Property.cluster_id == cluster_id)
         prop = (await session.execute(q_prop)).scalars().first()
-        
+
         if prop:
-            #Находим оставшихся и говорим, что удаляемый с ними больше не дружит
+            # Находим оставшихся и говорим, что удаляемый с ними больше не дружит
             q_rem = select(Property).where(Property.cluster_id == cluster_id, Property.id != property_id)
             remaining_props = (await session.execute(q_rem)).scalars().all()
-            for r_prop in remaining_props:
-                await _record_ai_feedback(session, prop, r_prop)
+
+            attrs = [a.strip() for a in reason_attributes.split(",") if a.strip()]
+            text_clean = reason_text.strip() or None
+
+            n_written = await record_feedback_for_property_removal(
+                session, prop, remaining_props,
+                reason_attributes=attrs,
+                reason_text=text_clean,
+            )
+            logger.info(
+                f"[admin/remove] removed property {prop.id} from cluster "
+                f"{cluster_id} → wrote {n_written} feedback rows "
+                f"(attrs={attrs}, text_len={len(text_clean or '')})"
+            )
 
             prop.cluster_id = None
-            
+
             # Обновляем счетчик кластера
             q_cluster = select(PropertyCluster).where(PropertyCluster.id == cluster_id)
             cluster = (await session.execute(q_cluster)).scalars().first()
-            
+
             if cluster:
                 cluster.member_count -= 1
                 # Если в кластере остался только 1 объект, кластер теряет смысл — удаляем его
                 if cluster.member_count < 2:
                     await session.execute(delete(PropertyCluster).where(PropertyCluster.id == cluster_id))
-                    
+
             await session.commit()
-            
+
     return {"status": "ok"}
+
+
+# =============================================================
+# Sprint 6 Phase A — Dissolved pairs review page
+# =============================================================
+# Shows pairs the admin rejected as NOT duplicates, with the structured
+# reasoning (reason_attributes / reason_text / feedback_source). Phase C
+# (XGBoost retraining) will use these rows as labeled negative examples.
+# Task A.4 will add filter UI + AJAX pagination on top of these routes.
+
+@app.get("/admin/dissolved", response_class=HTMLResponse)
+async def admin_dissolved_page(request: Request):
+    """HTML page listing dissolved pairs. Initial load shows the most
+    recent 50 with no filters; Task A.4 will wire filter dropdowns to
+    /admin/dissolved/data via JS."""
+    async with async_session_maker() as session:
+        admin = await get_current_admin(request, session)
+        if not admin:
+            raise HTTPException(status_code=403)
+
+        feedbacks = await fetch_dissolved_feedbacks(session, limit=50, offset=0)
+        total = await count_dissolved_feedbacks(session)
+
+    return templates.TemplateResponse("admin_dissolved.html", {
+        "request": request,
+        "feedbacks": feedbacks,
+        "total": total,
+        "limit": 50,
+        "offset": 0,
+        "reason_attributes": sorted(VALID_REASON_ATTRIBUTES),
+        "feedback_sources": sorted(VALID_FEEDBACK_SOURCES),
+    })
+
+
+@app.get("/admin/dissolved/data")
+async def admin_dissolved_data(
+    request: Request,
+    source: str | None = None,
+    attribute: str | None = None,
+    domain: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """JSON data for /admin/dissolved page filtering. Hit by Task A.4's
+    AJAX. limit is capped at 200 to keep responses bounded."""
+    async with async_session_maker() as session:
+        admin = await get_current_admin(request, session)
+        if not admin:
+            raise HTTPException(status_code=403)
+
+        feedbacks = await fetch_dissolved_feedbacks(
+            session,
+            feedback_source=source,
+            reason_attribute=attribute,
+            domain=domain,
+            limit=min(limit, 200),
+            offset=offset,
+        )
+        total = await count_dissolved_feedbacks(
+            session,
+            feedback_source=source,
+            reason_attribute=attribute,
+            domain=domain,
+        )
+
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "feedbacks": feedbacks,
+    }
