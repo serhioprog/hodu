@@ -83,10 +83,19 @@ async def send_magic_links_to_agents(
     properties_count: int,
 ) -> dict[str, int]:
     """
-    Returns stats: {"sent": N, "failed": M, "skipped": K}.
+    Returns stats: {
+        "sent": N, "failed": M, "skipped": K,
+        "per_agent": [
+            {"email": str, "status": "DELIVERED"|"FAILED", "error": str|None},
+            ...
+        ]
+    }
     Skipped = inactive agents, or zero-property report.
+    per_agent is empty when dispatch short-circuits (no properties,
+    SMTP not configured, no active agents) — caller can fall back
+    to its own agent list in that case (Bug #3).
     """
-    stats = {"sent": 0, "failed": 0, "skipped": 0}
+    stats: dict = {"sent": 0, "failed": 0, "skipped": 0, "per_agent": []}
 
     if properties_count == 0:
         logger.info("[Notifier] no new properties — skipping dispatch")
@@ -134,10 +143,20 @@ async def send_magic_links_to_agents(
 
                     await smtp.send_message(msg)
                     stats["sent"] += 1
+                    stats["per_agent"].append({
+                        "email": agent.email,
+                        "status": "DELIVERED",
+                        "error": None,
+                    })
                     logger.success(f"[Notifier] sent -> {agent.email}")
 
                 except Exception as e:
                     stats["failed"] += 1
+                    stats["per_agent"].append({
+                        "email": agent.email,
+                        "status": "FAILED",
+                        "error": str(e)[:200],
+                    })
                     logger.error(f"[Notifier] send -> {agent.email} FAILED: {e}")
                     # Invalidate the token so an un-delivered email can't be
                     # abused if the address is typosquatted by an attacker.
@@ -149,6 +168,11 @@ async def send_magic_links_to_agents(
             await session.rollback()
             stats["failed"] = len(staged)
             stats["sent"] = 0
+            err = f"SMTP connect/login: {str(e)[:180]}"
+            stats["per_agent"] = [
+                {"email": a.email, "status": "FAILED", "error": err}
+                for a, _ in staged
+            ]
             return stats
 
         finally:

@@ -11,12 +11,10 @@ from loguru import logger
 from sqlalchemy import select
 
 from src.database.db import async_session_maker
-from src.models.domain import Property, PropertyStatus, SystemSetting
+from src.models.domain import Agent, EmailLog, Property, PropertyStatus, SystemSetting
 from src.services.notifier import send_magic_links_to_agents
 from src.tasks.daily_sync import daily_sync
 from src.tasks.probe_job import run_probe_job
-
-from src.models.domain import Property, PropertyStatus, SystemSetting, EmailLog, Agent
 
 # Single process-wide scheduler instance, shared with main.py lifespan.
 scheduler = AsyncIOScheduler(timezone="Europe/Athens")
@@ -93,31 +91,52 @@ async def job_email_report() -> None:
         
         try:
             stats = await send_magic_links_to_agents(today, len(pending))
-            success = stats.get("sent", 0) > 0
             error_msg = None
         except Exception as e:
             logger.error(f"Email sending failed: {e}")
-            success = False
+            stats = {
+                "sent": 0,
+                "failed": len(agents),
+                "skipped": 0,
+                "per_agent": [
+                    {"email": a.email, "status": "FAILED",
+                     "error": f"unhandled: {str(e)[:180]}"}
+                    for a in agents
+                ],
+            }
             error_msg = str(e)
 
-        if success:
+        any_delivered = stats.get("sent", 0) > 0
+        per_agent = stats.get("per_agent", [])
+
+        # Flip properties to ACTIVE if ANY agent received the report —
+        # we don't want a single failed delivery to block the workflow.
+        if any_delivered:
             for p in pending:
                 p.status = PropertyStatus.ACTIVE
-            
-            for agent in agents:
-                session.add(EmailLog(
-                    recipient_email=agent.email,
-                    status="DELIVERED",
-                    properties_count=len(pending)
-                ))
             logger.info(f"🧹 {len(pending)} properties flipped to ACTIVE")
+
+        # Bug #3: write EmailLog rows reflecting ACTUAL per-agent outcomes.
+        # Previously a single global success flag marked ALL agents as
+        # DELIVERED even when some failed. Now per-recipient truth.
+        if per_agent:
+            for r in per_agent:
+                session.add(EmailLog(
+                    recipient_email=r["email"],
+                    status=r["status"],          # "DELIVERED" or "FAILED"
+                    properties_count=len(pending),
+                    error_message=r.get("error"),
+                ))
         else:
+            # Notifier short-circuited (e.g. SMTP not configured) — no
+            # per-agent data. Fall back to marking everyone FAILED.
+            fallback_err = error_msg or "Dispatch short-circuited (SMTP not configured?)"
             for agent in agents:
                 session.add(EmailLog(
                     recipient_email=agent.email,
                     status="FAILED",
                     properties_count=len(pending),
-                    error_message=error_msg or "Failed to send via SMTP"
+                    error_message=fallback_err,
                 ))
 
         await session.commit()

@@ -17,7 +17,7 @@ from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.domain import Media, Property, PropertyStatus, utcnow
+from src.models.domain import Media, PriceHistory, Property, PropertyStatus, utcnow
 from src.models.schemas import PropertyTemplate
 
 
@@ -109,6 +109,67 @@ async def save_or_update_property(
         await session.rollback()
         logger.error(f"[repo] save_or_update_property failed: {e}")
         raise
+
+
+async def record_price_change(
+    session: AsyncSession,
+    prop: Property,
+    new_price: float | None,
+) -> bool:
+    """Atomically record a price observation for a property.
+
+    Behaviour:
+      * new_price is None        → no-op, returns False
+      * prop.price is None       → restore (fill-in, no PriceHistory,
+                                    no status flip — this isn't a
+                                    "change", it's data recovery).
+                                    Returns False.
+      * prop.price == new_price  → no-op, returns False
+      * prop.price != new_price  → write PriceHistory, set
+                                    previous_price = current price,
+                                    update price, flip status to
+                                    PRICE_CHANGED. Returns True.
+
+    Caller must still flush/commit — this function only stages session
+    writes (session.add for PriceHistory, attribute mutations for prop).
+
+    Bug #25: consolidates price-change logic that previously lived
+    inline in daily_sync._run_scrapers. Repository is now the single
+    source of truth for PriceHistory writes, previous_price tracking,
+    and the PRICE_CHANGED status flip. Any caller (daily_sync,
+    admin override, future re-deep paths) goes through this one
+    function — no risk of forgetting to write history or flip status.
+    """
+    if new_price is None:
+        return False
+
+    site_id = prop.site_property_id
+
+    if prop.price is None:
+        # Scraper recovered a price that was previously absent — restore
+        # without writing PriceHistory (this isn't a "change", it's a
+        # fill-in). previous_price gets the same value so the next real
+        # change has a non-NULL anchor for delta computation.
+        logger.info(f"💰 {site_id}: empty price restored → {new_price}€")
+        prop.price = new_price
+        if prop.previous_price is None:
+            prop.previous_price = new_price
+        return False
+
+    if prop.price == new_price:
+        return False  # no-op
+
+    # Real price change — write history, update fields, flip status.
+    logger.info(f"📉 {site_id}: {prop.price}€ → {new_price}€")
+    session.add(PriceHistory(
+        property_id=prop.id,
+        old_price=prop.price,
+        new_price=new_price,
+    ))
+    prop.previous_price = prop.price
+    prop.price = new_price
+    prop.status = PropertyStatus.PRICE_CHANGED
+    return True
 
 
 async def save_media_records(

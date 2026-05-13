@@ -482,10 +482,12 @@ class Stage1PlaywrightFetcher(BaseFetcher):
 
                 # ── Navigate ─────────────────────────────────────────
                 if method == "GET":
-                    await self._do_get(page, url, headers, timeout_ms)
+                    # Bug #17: status now sourced from Response.status,
+                    # not hardcoded 200. The >=400 check below will now
+                    # correctly raise HttpError on 404/5xx responses.
+                    status    = await self._do_get(page, url, headers, timeout_ms)
                     final_url = page.url
                     html      = await page.content()
-                    status    = 200  # Playwright doesn't surface status easily; assume OK if we got here
                 else:
                     # POST: do an in-page fetch() so we ride on the cf_clearance
                     # cookie that goto() just earned.
@@ -534,8 +536,12 @@ class Stage1PlaywrightFetcher(BaseFetcher):
 
     # ── GET path ─────────────────────────────────────────────────
 
-    async def _do_get(self, page, url: str, headers, timeout_ms: int) -> None:
-        """Navigate and wait for CF to resolve."""
+    async def _do_get(self, page, url: str, headers, timeout_ms: int) -> int:
+        """Navigate and wait for CF to resolve. Returns HTTP status code
+        from the underlying response. Returns 0 if Playwright reports no
+        Response object (rare — happens for in-page SPA navigations or
+        about:blank cases). Bug #17: previously returned None and caller
+        hardcoded status=200, masking real 404/5xx responses as success."""
         try:
             response = await page.goto(
                 url,
@@ -563,6 +569,12 @@ class Stage1PlaywrightFetcher(BaseFetcher):
         if _looks_like_cf_challenge(initial_html):
             logger.info(f"[Stage1] {url}: CF challenge detected, waiting…")
             await _wait_for_cf_to_resolve(page)
+
+        # Bug #17: surface the real HTTP status from the navigation
+        # response. response is None for SPA/internal navigations —
+        # treat as 0 (caller's >=400 check passes; content validators
+        # downstream catch genuinely broken responses).
+        return response.status if response is not None else 0
 
     # ── POST path (in-page fetch) ────────────────────────────────
 

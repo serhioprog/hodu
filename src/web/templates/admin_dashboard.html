@@ -277,12 +277,13 @@
                         
                         <div class="col-auto mb-3">
                             <label class="filter-label">Status</label>
-                            <select id="filterStatus" class="form-select form-select-sm" style="width: 90px;">
+                            <select id="filterStatus" class="form-select form-select-sm" style="width: 110px;">
                                 <option value="">All</option>
                                 <option value="NEW">New</option>
-                                <option value="PRICE DROP">Price Change</option>
+                                <option value="PRICE DROP">Drop</option>
                                 <option value="ACTIVE">Active</option>
                                 <option value="DELISTED">Delisted</option>
+                                <option value="SOLD">Sold</option>
                             </select>
                         </div>
                     </div>
@@ -334,10 +335,14 @@
                                 <td class="fw-bold text-nowrap" data-sort="{{ prop.price or 0 }}">{{ prop.price | euro }}</td>
                                 <td>
                                     {% set st = prop.status.value if prop.status.value is defined else prop.status %}
+                                    {# Bug #67: explicit SOLD branch — previously fell through to ACTIVE.
+                                       Note: "PRICE DROP" is UX language for PRICE_CHANGED enum value. #}
                                     {% if st == 'NEW' %}
                                         <span class="badge badge-new">NEW</span>
                                     {% elif st == 'PRICE_CHANGED' %}
                                         <span class="badge badge-price">PRICE DROP</span>
+                                    {% elif st == 'SOLD' %}
+                                        <span class="badge badge-delisted">SOLD</span>
                                     {% elif not prop.is_active or st == 'DELISTED' %}
                                         <span class="badge badge-delisted">DELISTED</span>
                                     {% else %}

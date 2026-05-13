@@ -49,9 +49,13 @@ from src.scrapers.sousouras_realestate import SousourasRealEstateScraper
 from src.core.config import settings
 from src.core.scraper_area_constants import HALKIDIKI_REGIONS_WHITELIST
 from src.database.db import async_session_maker
-from src.database.repository import save_media_records, save_or_update_property
+from src.database.repository import (
+    record_price_change,
+    save_media_records,
+    save_or_update_property,
+)
 from src.models.domain import (
-    ClusterStatus, PriceHistory, Property, PropertyCluster,
+    ClusterStatus, Property, PropertyCluster,
     PropertyStatus, utcnow, ScraperLog
 )
 from src.models.schemas import PropertyTemplate
@@ -460,9 +464,17 @@ async def _run_scrapers(global_stats: Dict[str, int]) -> List[DomainSyncReport]:
                             old_status = db_prop.status
                             db_prop.status = PropertyStatus.ACTIVE
                             db_prop.is_active = True
+                            # Bug #24: force embedding refresh on next MDM pass.
+                            # After DELISTED→ACTIVE revival, the existing vector
+                            # may be months stale (listing was absent from refresh
+                            # while is_active=False). Clearing content_hash makes
+                            # refresh_property_embeddings see this as "changed"
+                            # and recompute the embedding from current canonical
+                            # text. Detector then works on fresh vector.
+                            db_prop.content_hash = None
                             revived_count += 1
                             logger.info(
-                                f"🔁 {site_id}: revived from {old_status.value} → ACTIVE"
+                                f"🔁 {site_id}: revived from {old_status.value} → ACTIVE (content_hash cleared)"
                             )
 
                         # ---- Touch timestamps ------------------------------
@@ -480,29 +492,9 @@ async def _run_scrapers(global_stats: Dict[str, int]) -> List[DomainSyncReport]:
 
                         # ---- Price change detection ------------------------
                         # 1. Recovered NULL price (scraper got it now)
-                        if site_prop.price and db_prop.price is None:
-                            logger.info(
-                                f"💰 {site_id}: empty price restored → {site_prop.price}€"
-                            )
-                            db_prop.price = site_prop.price
-
-                        # 2. Real price change
-                        if (
-                            site_prop.price
-                            and db_prop.price
-                            and site_prop.price != db_prop.price
+                        if await record_price_change(
+                            session, db_prop, site_prop.price
                         ):
-                            logger.info(
-                                f"📉 {site_id}: {db_prop.price}€ → {site_prop.price}€"
-                            )
-                            session.add(PriceHistory(
-                                property_id=db_prop.id,
-                                old_price=db_prop.price,
-                                new_price=site_prop.price,
-                            ))
-                            db_prop.previous_price = db_prop.price
-                            db_prop.price = site_prop.price
-                            db_prop.status = PropertyStatus.PRICE_CHANGED
                             price_changed_count += 1
 
                         # ---- Re-deep fetch (rate-limited) ------------------
