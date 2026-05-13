@@ -1,0 +1,161 @@
+{# Reusable feedback modal — Sprint 6 Phase A Task A.3.
+   Opens when admin clicks Reject cluster or Remove property.
+   JS at bottom exposes window.openFeedbackModal({endpoint, title, confirmText, onSuccess}). #}
+
+<div class="modal fade" id="feedbackModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="feedbackModalTitle">Reject duplicate</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">
+          Why aren't these duplicates? Your reasoning trains the engine
+          to make better decisions next time.
+        </p>
+
+        <label class="form-label fw-semibold mb-2">Reasons (select all that apply)</label>
+        <div id="feedbackChips" class="d-flex flex-wrap gap-2 mb-3">
+          {# Chips match VALID_REASON_ATTRIBUTES taxonomy from feedback_repository.py #}
+          <span class="feedback-chip" data-attr="location">Location</span>
+          <span class="feedback-chip" data-attr="house_size">House Size</span>
+          <span class="feedback-chip" data-attr="land_size">Land Size</span>
+          <span class="feedback-chip" data-attr="type">Type</span>
+          <span class="feedback-chip" data-attr="bedrooms">Bedrooms</span>
+          <span class="feedback-chip" data-attr="bathrooms">Bathrooms</span>
+          <span class="feedback-chip" data-attr="levels">Levels</span>
+          <span class="feedback-chip" data-attr="year_built">Year Built</span>
+          <span class="feedback-chip" data-attr="price">Price</span>
+        </div>
+
+        <label for="feedbackText" class="form-label fw-semibold">Notes (optional)</label>
+        <textarea id="feedbackText" class="form-control" rows="3" maxlength="1000"
+                  placeholder="Additional details — e.g., 'Same coords but different villages, two distinct buildings'"></textarea>
+        <div class="text-end">
+          <small class="text-muted"><span id="feedbackCharCount">0</span>/1000</small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="feedbackSubmitBtn">Confirm</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .feedback-chip {
+    padding: 0.35rem 0.85rem;
+    border: 1px solid #ddd;
+    border-radius: 1rem;
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.875rem;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+    background: #fff;
+  }
+  .feedback-chip:hover { background: #f5f5f5; }
+  .feedback-chip.selected {
+    background: #dc3545;
+    color: #fff;
+    border-color: #dc3545;
+  }
+</style>
+
+<script>
+(function() {
+  const modalEl = document.getElementById('feedbackModal');
+  if (!modalEl) return;
+  const modal = new bootstrap.Modal(modalEl);
+  const chipsContainer = document.getElementById('feedbackChips');
+  const textArea = document.getElementById('feedbackText');
+  const charCount = document.getElementById('feedbackCharCount');
+  const submitBtn = document.getElementById('feedbackSubmitBtn');
+  const titleEl = document.getElementById('feedbackModalTitle');
+
+  let currentAction = null;  // {endpoint, onSuccess}
+
+  // Chip toggle
+  chipsContainer.addEventListener('click', (e) => {
+    if (e.target.classList.contains('feedback-chip')) {
+      e.target.classList.toggle('selected');
+    }
+  });
+
+  // Char counter
+  textArea.addEventListener('input', () => {
+    charCount.textContent = textArea.value.length;
+  });
+
+  // Submit
+  submitBtn.addEventListener('click', async () => {
+    if (!currentAction) return;
+
+    const selected = chipsContainer.querySelectorAll('.feedback-chip.selected');
+    const attrs = Array.from(selected).map(c => c.dataset.attr).join(',');
+    const text = textArea.value.trim();
+
+    // CSRF token: hidden input rendered on every admin page (see csrf.py).
+    // Same pattern handleClusterVerdict / removeProp use.
+    const csrfInput = document.querySelector('input[name="csrf_token"]');
+    const csrfToken = csrfInput ? csrfInput.value : '';
+
+    const params = new URLSearchParams();
+    params.append('reason_attributes', attrs);
+    params.append('reason_text', text);
+
+    submitBtn.disabled = true;
+    const oldText = submitBtn.textContent;
+    submitBtn.textContent = 'Saving…';
+
+    try {
+      const resp = await fetch(currentAction.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRF-Token': csrfToken,
+        },
+        body: params.toString(),
+        credentials: 'same-origin',
+      });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status + ' ' + resp.statusText);
+
+      modal.hide();
+      _resetModal();
+      if (currentAction.onSuccess) currentAction.onSuccess();
+    } catch (err) {
+      alert('Failed: ' + err.message);
+      submitBtn.disabled = false;
+      submitBtn.textContent = oldText;
+    }
+  });
+
+  function _resetModal() {
+    chipsContainer.querySelectorAll('.feedback-chip.selected')
+      .forEach(c => c.classList.remove('selected'));
+    textArea.value = '';
+    charCount.textContent = '0';
+    submitBtn.disabled = false;
+  }
+
+  // Public API. Other JS opens the modal via:
+  //   openFeedbackModal({
+  //     endpoint: '/admin/clusters/<cid>/reject',
+  //     title: 'Reject cluster',
+  //     confirmText: 'Reject',
+  //     onSuccess: () => location.reload(),
+  //   });
+  window.openFeedbackModal = function(opts) {
+    if (!opts || !opts.endpoint) {
+      console.error('openFeedbackModal: endpoint required');
+      return;
+    }
+    titleEl.textContent = opts.title || 'Provide feedback';
+    submitBtn.textContent = opts.confirmText || 'Confirm';
+    currentAction = {endpoint: opts.endpoint, onSuccess: opts.onSuccess};
+    _resetModal();
+    modal.show();
+  };
+})();
+</script>

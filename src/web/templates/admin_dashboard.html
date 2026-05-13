@@ -744,68 +744,80 @@ function removeProp(clusterId, propId, btn, event) {
     // Останавливаем клик, чтобы не открывалась соседняя вкладка с виллой
     event.stopPropagation();
 
-    // Confirm — destructive, undoable through manual-merge but operationally permanent.
-    if (!confirmDestructive('remove_property', { clusterId, propId })) return;
-
-    // Берем скрытый CSRF токен (он есть на странице)
-    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
-
-    // Отправляем тихий фоновый запрос на сервер
-    fetch(`/admin/clusters/${clusterId}/remove/${propId}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'X-CSRF-Token': csrfToken,
-        },
-        body: ''
-    })
-    .then(response => {
-        if (response.ok) {
-            const row = btn.closest('tr');
-            const tbody = row.closest('tbody');
-            
-            // Визуальный эффект: строка плавно исчезает
-            row.style.transition = "opacity 0.3s";
-            row.style.opacity = '0';
-            
-            setTimeout(() => {
-                row.remove(); // Удаляем строку из HTML
-                
-                // Проверяем, сколько вилл осталось в кластере
-                const rowsLeft = tbody.querySelectorAll('tr').length;
-                const card = tbody.closest('.cluster-card');
-                
-                if (rowsLeft < 2) {
-                    // Если осталась 1 вилла, кластер бессмысленный — удаляем всю карточку
-                    card.style.transition = "opacity 0.3s";
-                    card.style.opacity = '0';
-                    setTimeout(() => card.remove(), 300);
-                } else {
-                    // Иначе просто обновляем счетчик "member(s)"
-                    const countBadge = card.querySelector('span.text-muted');
-                    if (countBadge) countBadge.innerText = rowsLeft + " member(s)";
-                }
-            }, 300);
-        } else {
-            alert('Ошибка при удалении объекта.');
-        }
+    // Sprint 6 Phase A: feedback modal replaces the simple confirmDestructive
+    // dialog. The modal itself is the confirmation (Cancel / Remove buttons)
+    // and collects optional reason_attributes + reason_text. POST + DOM
+    // cleanup happen on Confirm via the onSuccess callback below.
+    const shortP = (propId || '').slice(0, 8).toUpperCase();
+    openFeedbackModal({
+        endpoint: `/admin/clusters/${clusterId}/remove/${propId}`,
+        title: `Remove property ${shortP}`,
+        confirmText: 'Remove',
+        onSuccess: () => _removePropDomCleanup(btn),
     });
 }
 
+function _removePropDomCleanup(btn) {
+    const row = btn.closest('tr');
+    if (!row) return;
+    const tbody = row.closest('tbody');
+
+    // Визуальный эффект: строка плавно исчезает
+    row.style.transition = "opacity 0.3s";
+    row.style.opacity = '0';
+
+    setTimeout(() => {
+        row.remove(); // Удаляем строку из HTML
+
+        // Проверяем, сколько вилл осталось в кластере
+        const rowsLeft = tbody.querySelectorAll('tr').length;
+        const card = tbody.closest('.cluster-card');
+
+        if (rowsLeft < 2) {
+            // Если осталась 1 вилла, кластер бессмысленный — удаляем всю карточку
+            card.style.transition = "opacity 0.3s";
+            card.style.opacity = '0';
+            setTimeout(() => card.remove(), 300);
+        } else {
+            // Иначе просто обновляем счетчик "member(s)"
+            const countBadge = card.querySelector('span.text-muted');
+            if (countBadge) countBadge.innerText = rowsLeft + " member(s)";
+        }
+    }, 300);
+}
+
 function handleClusterVerdict(clusterId, action, btn) {
-    // Confirm only for destructive actions. Approve is reversible via dissolve.
     if (action === 'reject') {
-        // 'reject' covers both PENDING reject and APPROVED dissolve — same backend path.
-        // Determine semantics from the cluster card's current status badge.
+        // Sprint 6 Phase A: feedback modal replaces confirmDestructive for
+        // reject (covers both PENDING reject and APPROVED dissolve — same
+        // backend path). Modal is the confirmation; on Confirm it POSTs with
+        // reason_attributes + reason_text and the onSuccess callback below
+        // fades the card out.
         const card = btn.closest('.cluster-card');
         const badge = card ? card.querySelector('.cluster-status-badge') : null;
         const isApproved = badge && badge.innerText.trim() === 'Approved';
-        const tableRows = card ? card.querySelectorAll('tbody tr').length : 0;
+        const verb = isApproved ? 'Dissolve' : 'Reject';
+        const shortId = (clusterId || '').slice(0, 8).toUpperCase();
 
-        const confirmAction = isApproved ? 'dissolve_cluster' : 'reject_cluster';
-        if (!confirmDestructive(confirmAction, { clusterId, memberCount: tableRows })) return;
+        openFeedbackModal({
+            endpoint: `/admin/clusters/${clusterId}/reject`,
+            title: `${verb} cluster ${shortId}`,
+            confirmText: verb,
+            onSuccess: () => {
+                if (!card) return;
+                card.style.transition = "opacity 0.3s";
+                card.style.opacity = '0';
+                setTimeout(() => {
+                    card.remove();
+                    const counter = document.getElementById('pending-count');
+                    if (counter) counter.innerText = parseInt(counter.innerText) - 1;
+                }, 300);
+            },
+        });
+        return;
     }
 
+    // Approve path: unchanged — no reasoning to collect, no modal.
     const csrfToken = document.querySelector('input[name="csrf_token"]').value;
 
     fetch(`/admin/clusters/${clusterId}/${action}`, {
@@ -819,43 +831,32 @@ function handleClusterVerdict(clusterId, action, btn) {
     .then(response => {
         if (response.ok) {
             const card = btn.closest('.cluster-card');
-            
-            if (action === 'approve') {
-                // Магия: переносим карточку в список подтвержденных!
-                const approvedContainer = document.getElementById('approved-clusters-container');
-                const actionsDiv = card.querySelector('.cluster-actions');
-                const badge = card.querySelector('.cluster-status-badge');
-                
-                // Прячем кнопки и меняем бейдж
-                if (actionsDiv) actionsDiv.style.display = 'none';
-                if (badge) {
-                    badge.className = 'badge bg-success text-white cluster-status-badge';
-                    badge.innerText = 'Approved';
-                }
-                
-                // Скрываем сообщения "Пусто" если они были
-                document.querySelectorAll('.empty-state').forEach(e => e.style.display = 'none');
-                
-                // Переносим карточку
-                card.style.opacity = '0';
-                setTimeout(() => {
-                    approvedContainer.prepend(card);
-                    card.style.opacity = '1';
-                    
-                    // Обновляем счетчики в табах
-                    document.getElementById('pending-count').innerText = parseInt(document.getElementById('pending-count').innerText) - 1;
-                    document.getElementById('approved-count').innerText = parseInt(document.getElementById('approved-count').innerText) + 1;
-                }, 300);
 
-            } else {
-                // Если Reject - просто удаляем с концами
-                card.style.transition = "opacity 0.3s";
-                card.style.opacity = '0';
-                setTimeout(() => {
-                    card.remove();
-                    document.getElementById('pending-count').innerText = parseInt(document.getElementById('pending-count').innerText) - 1;
-                }, 300);
+            // Магия: переносим карточку в список подтвержденных!
+            const approvedContainer = document.getElementById('approved-clusters-container');
+            const actionsDiv = card.querySelector('.cluster-actions');
+            const badge = card.querySelector('.cluster-status-badge');
+
+            // Прячем кнопки и меняем бейдж
+            if (actionsDiv) actionsDiv.style.display = 'none';
+            if (badge) {
+                badge.className = 'badge bg-success text-white cluster-status-badge';
+                badge.innerText = 'Approved';
             }
+
+            // Скрываем сообщения "Пусто" если они были
+            document.querySelectorAll('.empty-state').forEach(e => e.style.display = 'none');
+
+            // Переносим карточку
+            card.style.opacity = '0';
+            setTimeout(() => {
+                approvedContainer.prepend(card);
+                card.style.opacity = '1';
+
+                // Обновляем счетчики в табах
+                document.getElementById('pending-count').innerText = parseInt(document.getElementById('pending-count').innerText) - 1;
+                document.getElementById('approved-count').innerText = parseInt(document.getElementById('approved-count').innerText) + 1;
+            }, 300);
         } else {
             alert('Ошибка при отправке решения.');
         }
@@ -1421,6 +1422,9 @@ document.addEventListener('change', function(e) {
     }
 });
 </script>
+
+{# Sprint 6 Phase A: feedback modal partial. Defines window.openFeedbackModal(). #}
+{% include "partials/feedback_modal.html" %}
 
 </body>
 </html>
