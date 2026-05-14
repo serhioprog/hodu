@@ -206,6 +206,10 @@ class HybridEngine:
                     skipped_count += 1
                     continue
 
+                if not prop_a.content_hash or not prop_b.content_hash:
+                    skipped_count += 1
+                    continue
+
                 cached = await get_cached_verdict(
                     session, a_id, b_id,
                     prop_a.content_hash, prop_b.content_hash,
@@ -246,6 +250,21 @@ class HybridEngine:
         # Step 3: cluster construction (metrics only in shadow mode)
         builder = DSUClusterBuilder(scored_pairs)
         cluster_result = await builder.build(session)
+
+        # Step 3.5: Persist engine v2 clusters (engine_version='2')
+        # Sprint 7 Phase B — engine v2 now writes its own PENDING clusters
+        # to property_clusters + cluster_v2_members junction. Engine 1
+        # continues to use Property.cluster_id FK exclusively.
+        from .writer import write_cluster_build_result
+        writer_report = await write_cluster_build_result(session, cluster_result)
+        logger.info(
+            "[run_full_dedup] writer: {n_new} new + {n_attach} attached, "
+            "{n_props} props, {n_flags} mismerge flags",
+            n_new=writer_report.new_clusters_created,
+            n_attach=writer_report.attachments_updated,
+            n_props=writer_report.properties_attached,
+            n_flags=writer_report.mismerge_flags_emitted,
+        )
 
         # Step 4: aggregate + return
         cost_after = await cost_tracker.daily_snapshot()

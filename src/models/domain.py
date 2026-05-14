@@ -17,9 +17,10 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     ARRAY, Boolean, Column, DateTime, Float,
-    ForeignKey, Integer, Numeric, SmallInteger, String, Text, UniqueConstraint,
+    ForeignKey, Integer, Numeric, SmallInteger, String, Table, Text, UniqueConstraint,
     Enum as SAEnum,
 )
+
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
@@ -57,6 +58,23 @@ def utcnow() -> datetime:
     """Aware UTC datetime. NEVER use datetime.now() (naive, local TZ)."""
     return datetime.now(timezone.utc)
 
+# =============================================================
+# Sprint 7 Phase B — engine v2 junction table (declared at module
+# level as Table, not ORM class — many-to-many secondary= support).
+# Placed after Base import + utcnow() so all references resolve.
+# =============================================================
+cluster_v2_members_table = Table(
+    "cluster_v2_members",
+    Base.metadata,
+    Column("cluster_id", UUID(as_uuid=True),
+           ForeignKey("property_clusters.id", ondelete="CASCADE"),
+           primary_key=True),
+    Column("property_id", UUID(as_uuid=True),
+           ForeignKey("properties.id", ondelete="CASCADE"),
+           primary_key=True),
+    Column("added_at", DateTime(timezone=True),
+           default=utcnow, nullable=False),
+)
 
 # =============================================================
 # CLUSTER
@@ -75,6 +93,9 @@ class PropertyCluster(Base):
     )
 
     member_count = Column(Integer, nullable=False, default=0)
+
+    # Sprint 7 Phase B — which engine created this cluster
+    engine_version = Column(String(1), nullable=False, default='1', server_default='1')
 
     # --- Admin manual override ------------------------------------
     # When True, InternalDuplicateDetector MUST NOT touch `status`.
@@ -108,6 +129,14 @@ class PropertyCluster(Base):
         back_populates="cluster",
         foreign_keys="Property.cluster_id",
     )
+
+    # Sprint 7 Phase B — engine v2 members via cluster_v2_members junction
+    members_v2 = relationship(
+    "Property",
+    secondary=cluster_v2_members_table,
+    viewonly=True,
+)
+
     power_object = relationship(
         "PowerProperty",
         back_populates="cluster",

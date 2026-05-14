@@ -228,7 +228,7 @@
                     <svg class="me-2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                     Duplicates
                     <span style="position: relative; display: inline-block;">
-                        {% if pending_clusters|length > 0 %}
+                        {% if pending_clusters_v1|length > 0 or pending_clusters_v2|length > 0 %}
                             <span class="position-absolute bg-danger rounded-circle" style="width: 6px; height: 6px; top: -2px; right: -8px; animation: pulse 2s infinite;"></span>
                         {% endif %}
                     </span>
@@ -378,97 +378,205 @@
             </div>
 
             <!-- ==================== DUPLICATES AI ==================== -->
+            <!-- Sprint 7 Phase B: dual-engine view. Outer tabs select Engine 1
+                 (legacy InternalDuplicateDetector) vs Engine 2 (HybridEngine v2).
+                 Each engine has its own Pending / Approved / Dissolved triad.
+                 Dissolved is DISPLAY-split by source_engine_version, but both
+                 engines READ all feedback for learning (shared ground truth). -->
             <div class="tab-pane fade" id="tab-clusters">
 
-                <!-- Внутренние табы: Pending / Approved (стилизованные как главные) -->
-                <ul class="nav nav-tabs mb-4" id="clusterSubTabs" role="tablist">
+                <!-- ENGINE SELECTOR (outer pills) -->
+                <ul class="nav nav-pills mb-3" id="engineTabs" role="tablist">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="pills-pending-tab" data-bs-toggle="tab" data-bs-target="#pills-pending" type="button" role="tab">
-                            Pending review<sup id="pending-count" class="ms-1" style="color: #ff385c; font-weight: 500; font-size: 0.75em;">{{ pending_clusters|length }}</sup>
+                        <button class="nav-link active" id="engine1-tab" data-bs-toggle="pill" data-bs-target="#engine1-pane" type="button" role="tab">
+                            Engine 1 <span class="text-muted small">(legacy)</span>
+                            <sup class="ms-1" style="color: #ff385c; font-weight: 500; font-size: 0.75em;">{{ pending_clusters_v1|length }}</sup>
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="pills-approved-tab" data-bs-toggle="tab" data-bs-target="#pills-approved" type="button" role="tab">
-                            Approved<sup id="approved-count" class="ms-1" style="color: #888; font-weight: 400; font-size: 0.75em;">{{ approved_clusters|length }}</sup>
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="pills-dissolved-tab" data-bs-toggle="tab" data-bs-target="#pills-dissolved" type="button" role="tab">
-                            Dissolved<sup id="dissolved-count" class="ms-1" style="color: #888; font-weight: 400; font-size: 0.75em;">{{ total_dissolved }}</sup>
+                        <button class="nav-link" id="engine2-tab" data-bs-toggle="pill" data-bs-target="#engine2-pane" type="button" role="tab">
+                            Engine 2 <span class="text-muted small">(HybridEngine)</span>
+                            <sup class="ms-1" style="color: #ff385c; font-weight: 500; font-size: 0.75em;">{{ pending_clusters_v2|length }}</sup>
                         </button>
                     </li>
                 </ul>
 
-                <div class="tab-content" id="pills-tabContent">
-                    
-                    <!-- Вкладка PENDING -->
-                    <div class="tab-pane fade show active" id="pills-pending" role="tabpanel">
-                        <div id="pending-clusters-container">
-                            {% if pending_clusters %}
-                                {% for cluster in pending_clusters %}
-                                    {% include 'partials/cluster_card.html' %} <!-- Сюда вынесем карточку -->
-                                {% endfor %}
-                            {% else %}
-                                <div class="text-center py-5 text-muted empty-state">
-                                    <h5>No pending duplicates</h5><p>The AI hasn't flagged anything for review yet.</p>
-                                </div>
-                            {% endif %}
-                        </div>
-                    </div>
+                <div class="tab-content" id="engineTabContent">
 
-                    <!-- Вкладка APPROVED -->
-                    <div class="tab-pane fade" id="pills-approved" role="tabpanel">
-                        <div id="approved-clusters-container">
-                            {% if approved_clusters %}
-                                {% for cluster in approved_clusters %}
-                                    {% include 'partials/cluster_card.html' %}
-                                {% endfor %}
-                            {% else %}
-                                <div class="text-center py-5 text-muted empty-state">
-                                    <h5>No approved clusters</h5><p>You haven't approved any master records yet.</p>
-                                </div>
-                            {% endif %}
-                        </div>
-                    </div>
+                    <!-- ============ ENGINE 1 PANE ============ -->
+                    <div class="tab-pane fade show active" id="engine1-pane" role="tabpanel">
 
-                    <!-- Вкладка DISSOLVED (Sprint 6 Phase A) -->
-                    <div class="tab-pane fade" id="pills-dissolved" role="tabpanel">
-                        <p class="text-muted small mb-4">
-                            Cumulative pair-level memory of clusters/properties you previously rejected
-                            as NOT duplicates. Each N-member cluster rejection wrote N×(N−1)/2 rows,
-                            so {{ total_dissolved }} pairs reflects roughly
-                            {{ (total_dissolved / 6)|int }}–{{ (total_dissolved / 3)|int }} actual
-                            rejection events over hodu's lifetime. The engine reads these at T0 to
-                            avoid re-proposing pairs you've already said no to; Phase C ML training
-                            (Sprint 9-10) will also use them as labeled negative examples.
-                        </p>
+                        <ul class="nav nav-tabs mb-4" id="clusterSubTabs-1" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="pills-pending-1-tab" data-bs-toggle="tab" data-bs-target="#pills-pending-1" type="button" role="tab">
+                                    Pending review<sup class="ms-1" style="color: #ff385c; font-weight: 500; font-size: 0.75em;">{{ pending_clusters_v1|length }}</sup>
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="pills-approved-1-tab" data-bs-toggle="tab" data-bs-target="#pills-approved-1" type="button" role="tab">
+                                    Approved<sup class="ms-1" style="color: #888; font-weight: 400; font-size: 0.75em;">{{ approved_clusters_v1|length }}</sup>
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="pills-dissolved-1-tab" data-bs-toggle="tab" data-bs-target="#pills-dissolved-1" type="button" role="tab">
+                                    Dissolved<sup id="dissolved-count" class="ms-1" style="color: #888; font-weight: 400; font-size: 0.75em;">{{ total_dissolved_v1 }}</sup>
+                                </button>
+                            </li>
+                        </ul>
 
-                        <div id="dissolvedList">
-                            {% if dissolved_feedbacks %}
-                                {% for f in dissolved_feedbacks %}
-                                    {% include 'partials/dissolved_pair_card.html' %}
-                                {% endfor %}
-                            {% else %}
-                                <div class="text-center py-5 text-muted empty-state">
-                                    <h5>No dissolved pairs yet</h5>
-                                    <p>When you reject a cluster or remove a property from one, the pair lands here.</p>
-                                </div>
-                            {% endif %}
-                        </div>
+                        <div class="tab-content" id="engine1-tabContent">
 
-                        {% if total_dissolved > 50 %}
-                        <nav class="mt-3" aria-label="Dissolved pagination">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <small class="text-muted" id="dissolvedPaginationInfo">
-                                    Showing 1–{{ dissolved_feedbacks|length }} of {{ total_dissolved }}
-                                </small>
-                                <div>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dissolvedPrevPage" disabled>← Previous</button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dissolvedNextPage">Next →</button>
+                            <!-- Engine 1: PENDING -->
+                            <div class="tab-pane fade show active" id="pills-pending-1" role="tabpanel">
+                                <div id="pending-clusters-container-1">
+                                    {% if pending_clusters_v1 %}
+                                        {% for cluster in pending_clusters_v1 %}
+                                            {% include 'partials/cluster_card.html' %}
+                                        {% endfor %}
+                                    {% else %}
+                                        <div class="text-center py-5 text-muted empty-state">
+                                            <h5>No pending duplicates (Engine 1)</h5>
+                                            <p>The legacy engine hasn't flagged anything for review yet.</p>
+                                        </div>
+                                    {% endif %}
                                 </div>
                             </div>
-                        </nav>
-                        {% endif %}
+
+                            <!-- Engine 1: APPROVED -->
+                            <div class="tab-pane fade" id="pills-approved-1" role="tabpanel">
+                                <div id="approved-clusters-container-1">
+                                    {% if approved_clusters_v1 %}
+                                        {% for cluster in approved_clusters_v1 %}
+                                            {% include 'partials/cluster_card.html' %}
+                                        {% endfor %}
+                                    {% else %}
+                                        <div class="text-center py-5 text-muted empty-state">
+                                            <h5>No approved clusters (Engine 1)</h5>
+                                            <p>You haven't approved any legacy-engine master records yet.</p>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+
+                            <!-- Engine 1: DISSOLVED -->
+                            <div class="tab-pane fade" id="pills-dissolved-1" role="tabpanel">
+                                <p class="text-muted small mb-4">
+                                    Pairs you rejected from <strong>Engine 1</strong> clusters.
+                                    {{ total_dissolved_v1 }} pairs reflects roughly
+                                    {{ (total_dissolved_v1 / 6)|int }}–{{ (total_dissolved_v1 / 3)|int }}
+                                    actual rejection events. Both engines READ all rejections at T0
+                                    for shared learning — the per-engine split here is for admin audit only.
+                                </p>
+
+                                <div id="dissolvedList">
+                                    {% if dissolved_feedbacks_v1 %}
+                                        {% for f in dissolved_feedbacks_v1 %}
+                                            {% include 'partials/dissolved_pair_card.html' %}
+                                        {% endfor %}
+                                    {% else %}
+                                        <div class="text-center py-5 text-muted empty-state">
+                                            <h5>No dissolved pairs (Engine 1) yet</h5>
+                                            <p>When you reject an Engine 1 cluster, the pair lands here.</p>
+                                        </div>
+                                    {% endif %}
+                                </div>
+
+                                {% if total_dissolved_v1 > 50 %}
+                                <nav class="mt-3" aria-label="Dissolved pagination">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <small class="text-muted" id="dissolvedPaginationInfo">
+                                            Showing 1–{{ dissolved_feedbacks_v1|length }} of {{ total_dissolved_v1 }}
+                                        </small>
+                                        <div>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" id="dissolvedPrevPage" disabled>← Previous</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" id="dissolvedNextPage">Next →</button>
+                                        </div>
+                                    </div>
+                                </nav>
+                                {% endif %}
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <!-- ============ ENGINE 2 PANE ============ -->
+                    <div class="tab-pane fade" id="engine2-pane" role="tabpanel">
+
+                        <ul class="nav nav-tabs mb-4" id="clusterSubTabs-2" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="pills-pending-2-tab" data-bs-toggle="tab" data-bs-target="#pills-pending-2" type="button" role="tab">
+                                    Pending review<sup class="ms-1" style="color: #ff385c; font-weight: 500; font-size: 0.75em;">{{ pending_clusters_v2|length }}</sup>
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="pills-approved-2-tab" data-bs-toggle="tab" data-bs-target="#pills-approved-2" type="button" role="tab">
+                                    Approved<sup class="ms-1" style="color: #888; font-weight: 400; font-size: 0.75em;">{{ approved_clusters_v2|length }}</sup>
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="pills-dissolved-2-tab" data-bs-toggle="tab" data-bs-target="#pills-dissolved-2" type="button" role="tab">
+                                    Dissolved<sup class="ms-1" style="color: #888; font-weight: 400; font-size: 0.75em;">{{ total_dissolved_v2 }}</sup>
+                                </button>
+                            </li>
+                        </ul>
+
+                        <div class="tab-content" id="engine2-tabContent">
+
+                            <!-- Engine 2: PENDING -->
+                            <div class="tab-pane fade show active" id="pills-pending-2" role="tabpanel">
+                                <div id="pending-clusters-container-2">
+                                    {% if pending_clusters_v2 %}
+                                        {% for cluster in pending_clusters_v2 %}
+                                            {% include 'partials/cluster_card.html' %}
+                                        {% endfor %}
+                                    {% else %}
+                                        <div class="text-center py-5 text-muted empty-state">
+                                            <h5>No pending duplicates (Engine 2)</h5>
+                                            <p>HybridEngine hasn't proposed any clusters yet. Run a daily sync to populate.</p>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+
+                            <!-- Engine 2: APPROVED -->
+                            <div class="tab-pane fade" id="pills-approved-2" role="tabpanel">
+                                <div id="approved-clusters-container-2">
+                                    {% if approved_clusters_v2 %}
+                                        {% for cluster in approved_clusters_v2 %}
+                                            {% include 'partials/cluster_card.html' %}
+                                        {% endfor %}
+                                    {% else %}
+                                        <div class="text-center py-5 text-muted empty-state">
+                                            <h5>No approved clusters (Engine 2)</h5>
+                                            <p>You haven't approved any HybridEngine clusters yet.</p>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+
+                            <!-- Engine 2: DISSOLVED -->
+                            <div class="tab-pane fade" id="pills-dissolved-2" role="tabpanel">
+                                <p class="text-muted small mb-4">
+                                    Pairs you rejected from <strong>Engine 2 (HybridEngine)</strong> clusters.
+                                    Total {{ total_dissolved_v2 }} pairs. Both engines read all rejections
+                                    at T0 for learning regardless of which engine's cluster the rejection came from.
+                                </p>
+
+                                <div id="dissolvedList-2">
+                                    {% if dissolved_feedbacks_v2 %}
+                                        {% for f in dissolved_feedbacks_v2 %}
+                                            {% include 'partials/dissolved_pair_card.html' %}
+                                        {% endfor %}
+                                    {% else %}
+                                        <div class="text-center py-5 text-muted empty-state">
+                                            <h5>No dissolved pairs (Engine 2) yet</h5>
+                                            <p>When you reject a HybridEngine cluster, the pair lands here.</p>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+
+                        </div>
                     </div>
 
                 </div>
@@ -935,7 +1043,14 @@ document.addEventListener("DOMContentLoaded", function() {
         if (tabElement) new bootstrap.Tab(tabElement).show();
     }
 
-    // 2. Восстанавливаем вложенную вкладку (Cron, Scraper Logs, Email)
+    // 2a. Sprint 7: Восстанавливаем выбор движка (Engine 1 vs Engine 2)
+    let activeEngineTab = localStorage.getItem('activeEngineTab');
+    if (activeEngineTab) {
+        let engineTabElement = document.querySelector(`button[data-bs-target="${activeEngineTab}"]`);
+        if (engineTabElement) new bootstrap.Tab(engineTabElement).show();
+    }
+
+    // 2b. Восстанавливаем вложенную вкладку (Pending/Approved/Dissolved per engine)
     let activeSubTab = localStorage.getItem('activeSubTab');
     if (activeSubTab) {
         let subTabElement = document.querySelector(`button[data-bs-target="${activeSubTab}"]`);
@@ -949,8 +1064,16 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     });
 
-    // 4. Запоминаем клики по вложенным вкладкам
-    document.querySelectorAll('.nav-tabs .nav-link:not(#adminTabs .nav-link)').forEach(tab => {
+    // 3b. Sprint 7: Запоминаем выбор engine (отдельный ключ, отдельный listener)
+    document.querySelectorAll('#engineTabs .nav-link').forEach(tab => {
+        tab.addEventListener('shown.bs.tab', function (event) {
+            localStorage.setItem('activeEngineTab', event.target.getAttribute('data-bs-target'));
+        });
+    });
+
+    // 4. Запоминаем клики по вложенным вкладкам (Pending/Approved/Dissolved)
+    // Исключаем #adminTabs (главные) и #engineTabs (движки) — у них свои keys.
+    document.querySelectorAll('.nav-tabs .nav-link:not(#adminTabs .nav-link):not(#engineTabs .nav-link)').forEach(tab => {
         tab.addEventListener('shown.bs.tab', function (event) {
             localStorage.setItem('activeSubTab', event.target.getAttribute('data-bs-target'));
         });

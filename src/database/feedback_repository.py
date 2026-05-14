@@ -228,6 +228,7 @@ async def fetch_dissolved_feedbacks(
     feedback_source: str | None = None,
     reason_attribute: str | None = None,
     domain: str | None = None,
+    source_engine_version: str | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[dict]:
@@ -257,6 +258,9 @@ async def fetch_dissolved_feedbacks(
     if domain:
         where_clauses.append("(pa.source_domain = :domain OR pb.source_domain = :domain)")
         params["domain"] = domain
+    if source_engine_version:                                # ← NEW
+        where_clauses.append("f.source_engine_version = :sev")
+        params["sev"] = source_engine_version
 
     where_sql = ""
     if where_clauses:
@@ -328,6 +332,7 @@ async def count_dissolved_feedbacks(
     feedback_source: str | None = None,
     reason_attribute: str | None = None,
     domain: str | None = None,
+    source_engine_version: str | None = None,
 ) -> int:
     """Count rows matching the same filters as fetch_dissolved_feedbacks.
     Used for pagination total."""
@@ -343,6 +348,9 @@ async def count_dissolved_feedbacks(
     if domain:
         where_clauses.append("(pa.source_domain = :domain OR pb.source_domain = :domain)")
         params["domain"] = domain
+    if source_engine_version:                                # ← NEW
+        where_clauses.append("f.source_engine_version = :sev")
+        params["sev"] = source_engine_version
 
     where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
 

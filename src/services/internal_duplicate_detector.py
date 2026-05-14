@@ -294,7 +294,7 @@ class InternalDuplicateDetector:
         # ties produced non-deterministic Vision budget allocation (which
         # 50 of the tied pairs got the budget depended on iteration order).
         # Stable tiebreaker: prop_a_id alphabetical, then prop_b_id.
-        pending_edges.sort(key=lambda e: (-e.similarity, str(e.prop_a_id), str(e.prop_b_id)))
+        pending_edges.sort(key=lambda e: (-e.similarity, str(e.a_id), str(e.b_id)))
         budget = pending_edges[: settings.VISION_MAX_PAIRS_PER_RUN]
 
         logger.info(

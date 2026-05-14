@@ -371,8 +371,8 @@ async def admin_dashboard(request: Request):
             #.limit(300)  #<-- Лимит показа количества обьектов в пагиннации
         )).scalars().all()
 
-        # 1. Получаем кластеры, ожидающие проверки
-        pending_clusters = (await session.execute(
+        # 1a. Engine 1 pending clusters (legacy InternalDuplicateDetector)
+        pending_clusters_v1 = (await session.execute(
             select(PropertyCluster)
             .options(
                 selectinload(PropertyCluster.members).options(
@@ -382,7 +382,28 @@ async def admin_dashboard(request: Request):
                     selectinload(Property.media),
                 )
             )
-            .where(PropertyCluster.status == ClusterStatus.PENDING)
+            .where(
+                PropertyCluster.status == ClusterStatus.PENDING,
+                PropertyCluster.engine_version == '1',
+            )
+            .order_by(PropertyCluster.created_at.desc())
+        )).scalars().all()
+
+        # 1b. Engine 2 pending clusters (HybridEngine v2)
+        pending_clusters_v2 = (await session.execute(
+            select(PropertyCluster)
+            .options(
+                selectinload(PropertyCluster.members_v2).options(
+                    defer(Property.embedding),
+                    defer(Property.image_phashes),
+                    defer(Property.content_hash),
+                    selectinload(Property.media),
+                )
+            )
+            .where(
+                PropertyCluster.status == ClusterStatus.PENDING,
+                PropertyCluster.engine_version == '2',
+            )
             .order_by(PropertyCluster.created_at.desc())
         )).scalars().all()
 
@@ -393,7 +414,7 @@ async def admin_dashboard(request: Request):
         #
         # We compute this in a single pass: build a lookup of all member-pair
         # rejection counts, then attach max() per cluster as a transient attr.
-        pending_cluster_ids = [c.id for c in pending_clusters]
+        pending_cluster_ids = [c.id for c in pending_clusters_v1 + pending_clusters_v2]
         feedback_counts: dict[str, int] = {}
         if pending_cluster_ids:
             # Count rejections per cluster: how many of this cluster's
@@ -425,16 +446,30 @@ async def admin_dashboard(request: Request):
         # Attach as a transient attribute on each cluster object — the
         # template reads it as cluster.feedback_recurrence. No DB schema
         # change needed because we set it on the instance, not the model.
-        for c in pending_clusters:
+        for c in pending_clusters_v1 + pending_clusters_v2:
             c.feedback_recurrence = feedback_counts.get(str(c.id), 0)
 
-        # 2. Получаем уже подтвержденные кластеры (берем последние 50, чтобы не перегружать страницу)
-        approved_clusters = (await session.execute(
+        # 2a. Engine 1 approved clusters
+        approved_clusters_v1 = (await session.execute(
             select(PropertyCluster)
             .options(selectinload(PropertyCluster.members))
             .where(
                 PropertyCluster.status == ClusterStatus.APPROVED,
-                PropertyCluster.member_count >= 2  # СТРОГИЙ ФИЛЬТР: только группы
+                PropertyCluster.engine_version == '1',
+                PropertyCluster.member_count >= 2,
+            )
+            .order_by(PropertyCluster.updated_at.desc())
+            .limit(50)
+        )).scalars().all()
+
+        # 2b. Engine 2 approved clusters
+        approved_clusters_v2 = (await session.execute(
+            select(PropertyCluster)
+            .options(selectinload(PropertyCluster.members_v2))
+            .where(
+                PropertyCluster.status == ClusterStatus.APPROVED,
+                PropertyCluster.engine_version == '2',
+                PropertyCluster.member_count >= 2,
             )
             .order_by(PropertyCluster.updated_at.desc())
             .limit(50)
@@ -449,10 +484,18 @@ async def admin_dashboard(request: Request):
             select(EmailLog).order_by(EmailLog.created_at.desc()).limit(50)
         )).scalars().all()
 
-        # Sprint 6 Phase A: total dissolved count for the Duplicates sub-tab.
-        # Cheap COUNT(*) — single index scan on ai_duplicate_feedbacks.
-        total_dissolved = await count_dissolved_feedbacks(session)
-        dissolved_feedbacks = await fetch_dissolved_feedbacks(session, limit=50, offset=0)
+        # Sprint 7: per-engine Dissolved display.
+        # Both engines READ all feedback rows for learning (shared),
+        # but the UI shows them split by source_engine_version so admin
+        # knows WHICH engine's cluster they rejected.
+        total_dissolved_v1 = await count_dissolved_feedbacks(session, source_engine_version='1')
+        total_dissolved_v2 = await count_dissolved_feedbacks(session, source_engine_version='2')
+        dissolved_feedbacks_v1 = await fetch_dissolved_feedbacks(
+            session, limit=50, offset=0, source_engine_version='1'
+        )
+        dissolved_feedbacks_v2 = await fetch_dissolved_feedbacks(
+            session, limit=50, offset=0, source_engine_version='2'
+        )
 
         return templates.TemplateResponse(
             "admin_dashboard.html",
@@ -461,10 +504,14 @@ async def admin_dashboard(request: Request):
                 current_user=admin,
                 users=users,
                 properties=properties,
-                pending_clusters=pending_clusters,
-                approved_clusters=approved_clusters,
-                total_dissolved=total_dissolved,
-                dissolved_feedbacks=dissolved_feedbacks,
+                pending_clusters_v1=pending_clusters_v1,
+                pending_clusters_v2=pending_clusters_v2,
+                approved_clusters_v1=approved_clusters_v1,
+                approved_clusters_v2=approved_clusters_v2,
+                total_dissolved_v1=total_dissolved_v1,
+                total_dissolved_v2=total_dissolved_v2,
+                dissolved_feedbacks_v1=dissolved_feedbacks_v1,
+                dissolved_feedbacks_v2=dissolved_feedbacks_v2,
                 sync_time=sync_time.value if sync_time else "00:01",
                 report_time=repo_time.value if repo_time else "09:30",
                 scraper_logs=scraper_logs,

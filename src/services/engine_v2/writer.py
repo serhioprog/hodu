@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from loguru import logger
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -97,17 +97,22 @@ async def write_cluster_build_result(
     """
     report = WriterReport()
 
-    # 1. Process new clusters (attachments + new)
+    # 1. Process new clusters
+    # Sprint 7 Phase B — engine v2 MVP: skip attachment branch. Engine 2
+    # builds fresh PENDING clusters each run; attachment to existing engine
+    # 2 approved clusters is Sprint 8 work (requires querying engine_version
+    # ='2' approved clusters + junction-aware member diff).
     for cluster in result.new_clusters:
         if cluster.is_attachment:
-            attached_count = await _update_attachment(session, cluster)
-            if attached_count > 0:
-                report.attachments_updated += 1
-                report.properties_attached += attached_count
-        else:
-            await _create_pending_cluster(session, cluster)
-            report.new_clusters_created += 1
-            report.properties_attached += len(cluster.member_ids)
+            logger.debug(
+                "[writer] skip attachment for cluster {cid} (engine v2 MVP, "
+                "Sprint 8 will add attachment logic)",
+                cid=str(cluster.cluster_id)[:8],
+            )
+            continue
+        await _create_pending_cluster(session, cluster)
+        report.new_clusters_created += 1
+        report.properties_attached += len(cluster.member_ids)
 
     # 2. Process bridge_blocks
     for bridge in result.bridge_blocks:
@@ -162,7 +167,9 @@ async def _create_pending_cluster(
     timestamp = utcnow()
     notes_text = f"engine_v2: created at {timestamp.isoformat()}"
 
-    # 1. INSERT property_clusters row
+    # 1. INSERT property_clusters row with engine_version='2'
+    # Sprint 7 Phase B — engine v2 owns its own cluster lifecycle parallel
+    # to engine 1. Different engine_version isolates the two engines.
     new_cluster = PropertyCluster(
         id=cluster.cluster_id,
         status=ClusterStatus.PENDING,
@@ -170,19 +177,30 @@ async def _create_pending_cluster(
         ai_score=cluster.ai_score,
         phash_matches=None,
         notes=notes_text,
+        engine_version='2',
         # created_at, updated_at default via ORM utcnow
     )
     session.add(new_cluster)
 
-    # 2. UPDATE properties.cluster_id for all members
-    await session.execute(
-        update(Property)
-        .where(Property.id.in_(cluster.member_ids))
-        .values(cluster_id=cluster.cluster_id)
-    )
+    # 2. INSERT cluster_v2_members rows (junction).
+    # Engine v1 uses Property.cluster_id FK exclusively. Engine v2 uses
+    # this junction so a property can be in BOTH a v1 cluster AND a v2
+    # cluster at the same time — the whole point of parallel operation.
+    if cluster.member_ids:
+        await session.execute(
+            text("""
+                INSERT INTO cluster_v2_members (cluster_id, property_id)
+                SELECT :cluster_id, unnest(CAST(:member_ids AS UUID[]))
+                ON CONFLICT (cluster_id, property_id) DO NOTHING
+            """),
+            {
+                "cluster_id": cluster.cluster_id,
+                "member_ids": [str(mid) for mid in cluster.member_ids],
+            },
+        )
 
     logger.debug(
-        "[writer] new cluster {cid} (PENDING, {n} members, ai_score={s:.3f})",
+        "[writer] new cluster {cid} (PENDING engine_v2, {n} members, ai_score={s:.3f})",
         cid=str(cluster.cluster_id)[:8],
         n=len(cluster.member_ids),
         s=cluster.ai_score,
