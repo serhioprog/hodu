@@ -1,0 +1,13 @@
+{
+  "villa": ["Villa"],
+  "maisonette": ["Maisonette"],
+  "apartment": ["Apartment"],
+  "studio": ["Studio"],
+  "detached_house": ["Detached Home", "Detached House", "Bungalow"],
+  "multi_unit_building": ["Apartment Complex", "Residential Building"],
+  "residential_complex": ["Residential Complex"],
+  "hotel": ["Hotel"],
+  "commercial": ["Hotel/Commercial"],
+  "land": ["Land/Plot"],
+  "unknown": [null]
+}

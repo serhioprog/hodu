@@ -36,3 +36,6 @@ aiosmtplib==3.0.2
 
 playwright>=1.49.0
 playwright-stealth>=1.0.6
+# Engine v2 ML deps (Sprint 6 — promoted from experiments)
+joblib>=1.3.0
+scikit-learn>=1.3.0

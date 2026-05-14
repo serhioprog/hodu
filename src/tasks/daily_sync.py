@@ -750,7 +750,7 @@ async def _run_mdm_pipeline() -> None:
     # via .env). New engine writes only engine_v2_predictions + cache.
     if settings.USE_NEW_DUPLICATE_ENGINE:
         try:
-            from experiments.new_engine_v2.src.engine import HybridEngine
+            from src.services.engine_v2.engine import HybridEngine
             engine_v2 = HybridEngine.build_default()
             async with async_session_maker() as v2_session:
                 shadow_report = await engine_v2.run_full_dedup(v2_session)
