@@ -74,6 +74,20 @@
 
         .cluster-card { border: 1px solid #e2e6ea; border-radius: 12px; overflow: hidden; margin-bottom: 20px; }
         .cluster-header { background: #fff; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 15px 20px; }
+
+        /* === Dissolved pair-card styles (Sprint 6 Phase A) === */
+        .dissolved-pair-card { padding: 16px 20px; }
+        .dissolved-pair-meta { font-size: 12px; }
+        .dissolved-prop-block { display: flex; gap: 12px; align-items: flex-start; }
+        .dissolved-prop-thumb { width: 80px; height: 80px; object-fit: cover; border-radius: 6px; flex-shrink: 0; background: #e9ecef; }
+        .dissolved-prop-thumb-placeholder { width: 80px; height: 80px; border-radius: 6px; background: #f3f4f6; flex-shrink: 0; }
+        .dissolved-prop-info { min-width: 0; flex: 1; }
+        .dissolved-prop-info .prop-title { word-break: break-word; line-height: 1.3; margin-top: 2px; }
+        .dissolved-prop-info .prop-price { color: #047857; font-weight: 700; font-size: 14px; margin-top: 4px; }
+        .reason-pill { background: #FEF3C7; color: #92400E; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; margin-right: 4px; display: inline-block; }
+        .prop-link { color: #ff385c; text-decoration: none; font-weight: 600; }
+        .prop-link:hover { text-decoration: underline; }
+        .dissolved-pair-note { font-style: italic; }
         
         .main-card, .filter-panel, .price-box, .cluster-card, .modal-content {
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02) !important;
@@ -171,6 +185,10 @@
 </head>
 <body>
 
+{# CHROME-DUPLICATION-NOTE: logo header + hamburger + main nav tabs below are
+   duplicated in src/web/templates/admin_dissolved.html. If you edit them
+   here, mirror the change there. Phase B will extract to
+   partials/admin_chrome.html. #}
 <nav class="nav-admin">
     <div class="container d-flex justify-content-between align-items-center">
         <a href="/admin" class="logo">
@@ -184,7 +202,6 @@
             <ul class="dropdown-menu dropdown-menu-end dropdown-menu-custom">
                 <li><a class="dropdown-item" href="/daily-report">Dashboard</a></li>
                 <li><a class="dropdown-item" href="/admin">Control Panel</a></li>
-                <li><a class="dropdown-item" href="/admin/dissolved">Dissolved</a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li>
                     <form action="/logout" method="post" class="m-0">
@@ -375,6 +392,11 @@
                             Approved<sup id="approved-count" class="ms-1" style="color: #888; font-weight: 400; font-size: 0.75em;">{{ approved_clusters|length }}</sup>
                         </button>
                     </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="pills-dissolved-tab" data-bs-toggle="tab" data-bs-target="#pills-dissolved" type="button" role="tab">
+                            Dissolved<sup id="dissolved-count" class="ms-1" style="color: #888; font-weight: 400; font-size: 0.75em;">{{ total_dissolved }}</sup>
+                        </button>
+                    </li>
                 </ul>
 
                 <div class="tab-content" id="pills-tabContent">
@@ -407,6 +429,46 @@
                                 </div>
                             {% endif %}
                         </div>
+                    </div>
+
+                    <!-- Вкладка DISSOLVED (Sprint 6 Phase A) -->
+                    <div class="tab-pane fade" id="pills-dissolved" role="tabpanel">
+                        <p class="text-muted small mb-4">
+                            Cumulative pair-level memory of clusters/properties you previously rejected
+                            as NOT duplicates. Each N-member cluster rejection wrote N×(N−1)/2 rows,
+                            so {{ total_dissolved }} pairs reflects roughly
+                            {{ (total_dissolved / 6)|int }}–{{ (total_dissolved / 3)|int }} actual
+                            rejection events over hodu's lifetime. The engine reads these at T0 to
+                            avoid re-proposing pairs you've already said no to; Phase C ML training
+                            (Sprint 9-10) will also use them as labeled negative examples.
+                        </p>
+
+                        <div id="dissolvedList">
+                            {% if dissolved_feedbacks %}
+                                {% for f in dissolved_feedbacks %}
+                                    {% include 'partials/dissolved_pair_card.html' %}
+                                {% endfor %}
+                            {% else %}
+                                <div class="text-center py-5 text-muted empty-state">
+                                    <h5>No dissolved pairs yet</h5>
+                                    <p>When you reject a cluster or remove a property from one, the pair lands here.</p>
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        {% if total_dissolved > 50 %}
+                        <nav class="mt-3" aria-label="Dissolved pagination">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small class="text-muted" id="dissolvedPaginationInfo">
+                                    Showing 1–{{ dissolved_feedbacks|length }} of {{ total_dissolved }}
+                                </small>
+                                <div>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dissolvedPrevPage" disabled>← Previous</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dissolvedNextPage">Next →</button>
+                                </div>
+                            </div>
+                        </nav>
+                        {% endif %}
                     </div>
 
                 </div>
@@ -1421,6 +1483,147 @@ document.addEventListener('change', function(e) {
         updateBars(e.target);  // Pass the changed checkbox for incremental Set update
     }
 });
+
+/* ============================================================
+   Sprint 6 Phase A: Dissolved tab AJAX pagination
+   ============================================================ */
+(function() {
+    const PAGE_SIZE = 50;
+    let currentOffset = 0;
+    let currentTotal = parseInt(document.getElementById('dissolved-count')?.textContent || '0', 10);
+
+    const container = document.getElementById('dissolvedList');
+    const prevBtn = document.getElementById('dissolvedPrevPage');
+    const nextBtn = document.getElementById('dissolvedNextPage');
+    const paginationInfo = document.getElementById('dissolvedPaginationInfo');
+
+    if (!container || !prevBtn || !nextBtn) return; // Pagination only present when total > 50
+
+    function escapeHtml(s) {
+        if (s == null) return '';
+        return String(s)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
+    }
+
+    function formatPrice(p) {
+        if (p == null || p === '' || isNaN(Number(p))) return '';
+        const formatted = Number(p).toLocaleString('fr-FR').replace(/,/g, ' ');
+        return `<div class="prop-price">€${escapeHtml(formatted)}</div>`;
+    }
+
+    function renderCard(f) {
+        const a = f.prop_a || {};
+        const b = f.prop_b || {};
+        const aThumb = a.thumbnail
+            ? `<img class="dissolved-prop-thumb" src="/${escapeHtml(a.thumbnail)}" alt="">`
+            : '<div class="dissolved-prop-thumb-placeholder"></div>';
+        const bThumb = b.thumbnail
+            ? `<img class="dissolved-prop-thumb" src="/${escapeHtml(b.thumbnail)}" alt="">`
+            : '<div class="dissolved-prop-thumb-placeholder"></div>';
+        const aLink = a.url
+            ? `<a class="prop-link" href="${escapeHtml(a.url)}" target="_blank" rel="noopener">${escapeHtml(a.domain)}</a>`
+            : `<span class="fw-bold">${escapeHtml(a.domain)}</span>`;
+        const bLink = b.url
+            ? `<a class="prop-link" href="${escapeHtml(b.url)}" target="_blank" rel="noopener">${escapeHtml(b.domain)}</a>`
+            : `<span class="fw-bold">${escapeHtml(b.domain)}</span>`;
+        const reasonPills = (f.reason_attributes || [])
+            .map(attr => `<span class="reason-pill">${escapeHtml(String(attr).replace(/_/g, ' '))}</span>`)
+            .join('');
+        const reasonNote = f.reason_text
+            ? `<div class="dissolved-pair-note small text-muted mt-1">"${escapeHtml(f.reason_text)}"</div>`
+            : '';
+        const reasonBlock = (reasonPills || reasonNote)
+            ? `<div class="dissolved-pair-reasons mt-2 pt-2 border-top">${reasonPills}${reasonNote}</div>`
+            : '<div class="dissolved-pair-reasons-empty small text-muted mt-2 fst-italic">Legacy entry — no structured reasoning captured.</div>';
+        return `
+            <div class="cluster-card dissolved-pair-card">
+                <div class="dissolved-pair-meta d-flex justify-content-between align-items-center mb-2">
+                    <small class="text-muted">
+                        ${escapeHtml((f.created_at || '').substring(0, 10))} ·
+                        <span class="badge bg-light text-dark border">${escapeHtml(f.feedback_source)}</span>
+                    </small>
+                </div>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <div class="dissolved-prop-block">
+                            ${aThumb}
+                            <div class="dissolved-prop-info">
+                                ${aLink}
+                                <div class="prop-title small text-muted">${escapeHtml(a.title)}</div>
+                                ${formatPrice(a.price)}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="dissolved-prop-block">
+                            ${bThumb}
+                            <div class="dissolved-prop-info">
+                                ${bLink}
+                                <div class="prop-title small text-muted">${escapeHtml(b.title)}</div>
+                                ${formatPrice(b.price)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                ${reasonBlock}
+            </div>
+        `;
+    }
+
+    function renderRows(feedbacks) {
+        if (!feedbacks.length) {
+            container.innerHTML = '<div class="alert alert-info">No dissolved pairs on this page.</div>';
+            return;
+        }
+        container.innerHTML = feedbacks.map(renderCard).join('');
+    }
+
+    function updatePagination(batchSize) {
+        const start = currentOffset + 1;
+        const end = currentOffset + batchSize;
+        paginationInfo.textContent = `Showing ${start}–${end} of ${currentTotal}`;
+        prevBtn.disabled = currentOffset === 0;
+        nextBtn.disabled = end >= currentTotal;
+    }
+
+    async function loadPage() {
+        const params = new URLSearchParams();
+        params.append('limit', PAGE_SIZE);
+        params.append('offset', currentOffset);
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        try {
+            const resp = await fetch(`/admin/dissolved/data?${params.toString()}`, {
+                credentials: 'same-origin',
+            });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const data = await resp.json();
+            currentTotal = data.total;
+            const feedbacks = data.feedbacks || [];
+            renderRows(feedbacks);
+            updatePagination(feedbacks.length);
+        } catch (err) {
+            container.innerHTML = `<div class="alert alert-danger">Error loading data: ${escapeHtml(err.message)}</div>`;
+            prevBtn.disabled = currentOffset === 0;
+            nextBtn.disabled = false;
+        }
+    }
+
+    prevBtn.addEventListener('click', () => {
+        currentOffset = Math.max(0, currentOffset - PAGE_SIZE);
+        loadPage();
+    });
+    nextBtn.addEventListener('click', () => {
+        currentOffset += PAGE_SIZE;
+        loadPage();
+    });
+
+    // Initial cards are server-rendered (first 50). No fetch on tab open.
+})();
 </script>
 
 {# Sprint 6 Phase A: feedback modal partial. Defines window.openFeedbackModal(). #}

@@ -1,0 +1,79 @@
+{# Dissolved pair card — Sprint 6 Phase A.
+   Matches cluster_card.html's visual language (.cluster-card outer chrome:
+   rounded corners + shadow) but shows TWO properties as a pair with the
+   reason badges + admin note. No actions (this is a historical record).
+
+   Expected context: `f` is a dict from fetch_dissolved_feedbacks() — see
+   src/database/feedback_repository.py for the shape. #}
+
+<div class="cluster-card dissolved-pair-card">
+  <div class="dissolved-pair-meta d-flex justify-content-between align-items-center mb-2">
+    <small class="text-muted">
+      {{ f.created_at[:10] }} ·
+      <span class="badge bg-light text-dark border">{{ f.feedback_source }}</span>
+    </small>
+  </div>
+
+  <div class="row g-2">
+    {# Property A #}
+    <div class="col-md-6">
+      <div class="dissolved-prop-block">
+        {% if f.prop_a.thumbnail %}
+          <img class="dissolved-prop-thumb" src="/{{ f.prop_a.thumbnail }}" alt="">
+        {% else %}
+          <div class="dissolved-prop-thumb-placeholder"></div>
+        {% endif %}
+        <div class="dissolved-prop-info">
+          {% if f.prop_a.url %}
+            <a class="prop-link" href="{{ f.prop_a.url }}" target="_blank" rel="noopener">{{ f.prop_a.domain }}</a>
+          {% else %}
+            <span class="fw-bold">{{ f.prop_a.domain }}</span>
+          {% endif %}
+          <div class="prop-title small text-muted">{{ f.prop_a.title }}</div>
+          {% if f.prop_a.price %}
+            <div class="prop-price">€{{ "{:,.0f}".format(f.prop_a.price).replace(",", " ") }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {# Property B — same structure #}
+    <div class="col-md-6">
+      <div class="dissolved-prop-block">
+        {% if f.prop_b.thumbnail %}
+          <img class="dissolved-prop-thumb" src="/{{ f.prop_b.thumbnail }}" alt="">
+        {% else %}
+          <div class="dissolved-prop-thumb-placeholder"></div>
+        {% endif %}
+        <div class="dissolved-prop-info">
+          {% if f.prop_b.url %}
+            <a class="prop-link" href="{{ f.prop_b.url }}" target="_blank" rel="noopener">{{ f.prop_b.domain }}</a>
+          {% else %}
+            <span class="fw-bold">{{ f.prop_b.domain }}</span>
+          {% endif %}
+          <div class="prop-title small text-muted">{{ f.prop_b.title }}</div>
+          {% if f.prop_b.price %}
+            <div class="prop-price">€{{ "{:,.0f}".format(f.prop_b.price).replace(",", " ") }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Reason row — chips + free-text note. Legacy migration rows have neither;
+     show a subtle "no structured reasoning" line so the gap is explicit. #}
+  {% if f.reason_attributes or f.reason_text %}
+    <div class="dissolved-pair-reasons mt-2 pt-2 border-top">
+      {% for attr in f.reason_attributes %}
+        <span class="reason-pill">{{ attr.replace('_', ' ') }}</span>
+      {% endfor %}
+      {% if f.reason_text %}
+        <div class="dissolved-pair-note small text-muted mt-1">"{{ f.reason_text }}"</div>
+      {% endif %}
+    </div>
+  {% else %}
+    <div class="dissolved-pair-reasons-empty small text-muted mt-2 fst-italic">
+      Legacy entry — no structured reasoning captured.
+    </div>
+  {% endif %}
+</div>

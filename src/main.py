@@ -141,6 +141,11 @@ def _now_utc():
 
 templates.env.globals["now_utc"] = _now_utc
 
+@app.get("/")
+async def root_redirect():
+    """Silence root-path noise — WSL relay / health probes hit this."""
+    return RedirectResponse(url="/admin", status_code=307)
+
 def _ctx(request: Request, **extra) -> dict:
     """Standard Jinja context with CSRF token auto-injected."""
     base = {
@@ -444,6 +449,11 @@ async def admin_dashboard(request: Request):
             select(EmailLog).order_by(EmailLog.created_at.desc()).limit(50)
         )).scalars().all()
 
+        # Sprint 6 Phase A: total dissolved count for the Duplicates sub-tab.
+        # Cheap COUNT(*) — single index scan on ai_duplicate_feedbacks.
+        total_dissolved = await count_dissolved_feedbacks(session)
+        dissolved_feedbacks = await fetch_dissolved_feedbacks(session, limit=50, offset=0)
+
         return templates.TemplateResponse(
             "admin_dashboard.html",
             _ctx(
@@ -453,6 +463,8 @@ async def admin_dashboard(request: Request):
                 properties=properties,
                 pending_clusters=pending_clusters,
                 approved_clusters=approved_clusters,
+                total_dissolved=total_dissolved,
+                dissolved_feedbacks=dissolved_feedbacks,
                 sync_time=sync_time.value if sync_time else "00:01",
                 report_time=repo_time.value if repo_time else "09:30",
                 scraper_logs=scraper_logs,
@@ -1148,39 +1160,6 @@ async def admin_cluster_remove_member(
             await session.commit()
 
     return {"status": "ok"}
-
-
-# =============================================================
-# Sprint 6 Phase A — Dissolved pairs review page
-# =============================================================
-# Shows pairs the admin rejected as NOT duplicates, with the structured
-# reasoning (reason_attributes / reason_text / feedback_source). Phase C
-# (XGBoost retraining) will use these rows as labeled negative examples.
-# Task A.4 will add filter UI + AJAX pagination on top of these routes.
-
-@app.get("/admin/dissolved", response_class=HTMLResponse)
-async def admin_dissolved_page(request: Request):
-    """HTML page listing dissolved pairs. Initial load shows the most
-    recent 50 with no filters; Task A.4 will wire filter dropdowns to
-    /admin/dissolved/data via JS."""
-    async with async_session_maker() as session:
-        admin = await get_current_admin(request, session)
-        if not admin:
-            raise HTTPException(status_code=403)
-
-        feedbacks = await fetch_dissolved_feedbacks(session, limit=50, offset=0)
-        total = await count_dissolved_feedbacks(session)
-
-    return templates.TemplateResponse("admin_dissolved.html", {
-        "request": request,
-        "feedbacks": feedbacks,
-        "total": total,
-        "limit": 50,
-        "offset": 0,
-        "reason_attributes": sorted(VALID_REASON_ATTRIBUTES),
-        "feedback_sources": sorted(VALID_FEEDBACK_SOURCES),
-    })
-
 
 @app.get("/admin/dissolved/data")
 async def admin_dissolved_data(
