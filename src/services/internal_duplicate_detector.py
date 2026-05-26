@@ -27,15 +27,18 @@ from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from loguru import logger
-from sqlalchemy import text, select, update, func
+from sqlalchemy import text, select, update, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from src.core.config import settings
 from src.models.domain import (
+    Agent,
     ClusterStatus, Property, PropertyCluster, PropertyStatus,
+    PowerProperty,
     utcnow,
 )
 from src.services.phash_service import PHashService
+import json
+
 from src.services.vision_tiebreaker import VisionTiebreaker
 
 
@@ -47,7 +50,7 @@ _PAIR_SQL = text("""
 WITH eligible AS (
     SELECT
         id, embedding, image_phashes, source_domain, cluster_id,
-        price, size_sqm, description, content_hash
+        price, size_sqm, description, content_hash, category
     FROM properties
     WHERE
         embedding IS NOT NULL
@@ -63,11 +66,13 @@ SELECT
     p2.id            AS b_id,
     p1.image_phashes AS a_phashes,
     p2.image_phashes AS b_phashes,
+    p1.category      AS a_category,
+    p2.category      AS b_category,
     1 - (p1.embedding <=> p2.embedding) AS similarity
 FROM eligible p1
 CROSS JOIN LATERAL (
     SELECT id, embedding, image_phashes, source_domain, cluster_id,
-           price, size_sqm, content_hash
+           price, size_sqm, content_hash, category
     FROM eligible p2_inner
     WHERE
         p2_inner.id > p1.id
@@ -125,6 +130,56 @@ WHERE prop_count > :min_count
 
 
 # =============================================================
+# SQL: Quality Gate observability (V1-QualityGateMetric)
+# =============================================================
+# Single aggregate counting properties dropped by the eligible CTE filters,
+# broken down by reason. Drop reasons may overlap (one property can miss
+# multiple criteria) — individual counts are independent, not a partition.
+#
+# Keeps the production query (_PAIR_SQL) untouched; this runs once per
+# detector invocation purely for observability.
+_QUALITY_GATE_SQL = text("""
+SELECT
+    COUNT(*) FILTER (WHERE status IN ('ACTIVE','NEW','PRICE_CHANGED','DELISTED'))
+        AS active_count,
+    COUNT(*) FILTER (
+        WHERE status IN ('ACTIVE','NEW','PRICE_CHANGED','DELISTED')
+          AND embedding IS NOT NULL
+          AND content_hash IS NOT NULL
+          AND calc_municipality IS NOT NULL
+          AND category IS NOT NULL
+          AND (bedrooms IS NOT NULL OR land_size_sqm IS NOT NULL)
+          AND LENGTH(COALESCE(description, '')) >= 50
+    ) AS eligible_count,
+    COUNT(*) FILTER (
+        WHERE status IN ('ACTIVE','NEW','PRICE_CHANGED','DELISTED')
+          AND embedding IS NULL
+    ) AS drop_no_embedding,
+    COUNT(*) FILTER (
+        WHERE status IN ('ACTIVE','NEW','PRICE_CHANGED','DELISTED')
+          AND content_hash IS NULL
+    ) AS drop_no_content_hash,
+    COUNT(*) FILTER (
+        WHERE status IN ('ACTIVE','NEW','PRICE_CHANGED','DELISTED')
+          AND calc_municipality IS NULL
+    ) AS drop_no_municipality,
+    COUNT(*) FILTER (
+        WHERE status IN ('ACTIVE','NEW','PRICE_CHANGED','DELISTED')
+          AND category IS NULL
+    ) AS drop_no_category,
+    COUNT(*) FILTER (
+        WHERE status IN ('ACTIVE','NEW','PRICE_CHANGED','DELISTED')
+          AND bedrooms IS NULL AND land_size_sqm IS NULL
+    ) AS drop_no_bed_or_land,
+    COUNT(*) FILTER (
+        WHERE status IN ('ACTIVE','NEW','PRICE_CHANGED','DELISTED')
+          AND LENGTH(COALESCE(description, '')) < 50
+    ) AS drop_short_desc
+FROM properties
+""")
+
+
+# =============================================================
 # DSU
 # =============================================================
 class _DSU:
@@ -172,6 +227,76 @@ class _EdgeMeta:
 
 
 # =============================================================
+# Category canonicalization (V1-Precision-1)
+# =============================================================
+# Maps raw scraper category strings to broad family identifiers. Pairs are
+# only considered for clustering if both sides canonicalize to the SAME
+# family. Junk/ambiguous values map to None and are blocked from clustering.
+#
+# Self-contained: intentionally NOT imported from Engine 2 (shadow engine)
+# so production never depends on a module that could be removed. If
+# Engine 2's logic diverges, this dict is the source of truth for Engine 1.
+_CATEGORY_CANONICAL: Dict[str, Optional[str]] = {
+    # === RESIDENTIAL_DETACHED — single dwelling, varied marketing labels ===
+    "villa":                            "RESIDENTIAL_DETACHED",
+    "house (villa)":                    "RESIDENTIAL_DETACHED",
+    "residential, villa":               "RESIDENTIAL_DETACHED",
+    "maisonette, residential, villa":   "RESIDENTIAL_DETACHED",
+    "house":                            "RESIDENTIAL_DETACHED",
+    "detached house":                   "RESIDENTIAL_DETACHED",
+    "detached home":                    "RESIDENTIAL_DETACHED",
+    "semi detached house":              "RESIDENTIAL_DETACHED",
+    "house, residential":               "RESIDENTIAL_DETACHED",
+    "bungalow":                         "RESIDENTIAL_DETACHED",
+    "maisonette":                       "RESIDENTIAL_DETACHED",
+    "maisonette, residential":          "RESIDENTIAL_DETACHED",
+
+    # === RESIDENTIAL_FLATS — apartments and studios ===
+    "apartment":                        "RESIDENTIAL_FLATS",
+    "apartment house":                  "RESIDENTIAL_FLATS",
+    "studio":                           "RESIDENTIAL_FLATS",
+
+    # === COMPLEX — multi-unit buildings ===
+    "complex":                          "COMPLEX",
+    "apartment complex":                "COMPLEX",
+    "residential complex":              "COMPLEX",
+    "residential building":             "COMPLEX",
+    "building":                         "COMPLEX",
+
+    # === LAND ===
+    "land":                             "LAND",
+    "land/plot":                        "LAND",
+    "agricultural land":                "LAND",
+    "site":                             "LAND",
+
+    # === HOTEL ===
+    "hotel":                            "HOTEL",
+    "ξενοδοχείο":                       "HOTEL",   # Greek
+    "hotel/commercial":                 "HOTEL",
+
+    # === COMMERCIAL ===
+    "business":                         "COMMERCIAL",
+    "commercial property":              "COMMERCIAL",
+
+    # === UNKNOWN — blocked from clustering ===
+    "&nbsp;":                           None,
+    "other":                            None,
+    "investment":                       None,
+}
+
+
+def _canonicalize_category(raw: Optional[str]) -> Optional[str]:
+    """Map raw category string to its broad family identifier.
+
+    Returns None for junk/unknown — pairs with None on either side are
+    skipped during classification (V1-Precision-1).
+    """
+    if not raw:
+        return None
+    return _CATEGORY_CANONICAL.get(raw.strip().lower())
+
+
+# =============================================================
 # Detector
 # =============================================================
 class InternalDuplicateDetector:
@@ -183,18 +308,47 @@ class InternalDuplicateDetector:
 
     async def run(self, session: AsyncSession) -> Dict[str, int]:
         stats: Dict[str, int] = {
-            "approved_merged":     0,
+            # V1-Cleanup: approved_merged removed (Sprint 7 forced PENDING for all
+            # new clusters, line ~619; that branch became unreachable).
             "approved_singleton_skipped":  0,
             "pending":             0,
             "locked_preserved":    0,
+            # V1-AdminAuthority (Sprint 8): reverted_to_pending removed.
+            # Task E revert path replaced by proposal creation (see
+            # proposals_created below); this counter can never increment.
             "orphans_removed":     0,
             "sold_cleaned":    0,
-            "vision_resolved":     0,   # Vision verdicts honored (approve+reject)
-            "vision_skipped":      0,   # low-confidence or call failed
-            "vision_feedback_added": 0, # rejects written to AIDuplicateFeedback
+            "vision_resolved":     0,
+            "vision_skipped":      0,
+            "vision_feedback_added": 0,
+            "classify_errors":     0,   # V1-Robust-1: per-pair classification failures
+            "component_errors":    0,   # V1-Robust-1: per-component persist failures
+            "gray_zone_clusters":  0,   # V1-Recall-1: components persisted only due to pending-edge union
+            "proposals_created":   0,   # V1-AdminAuthority: candidate-member proposals for APPROVED clusters
         }
 
         stats["sold_cleaned"] = await self._release_sold_clusters(session)
+
+        stats["sold_cleaned"] = await self._release_sold_clusters(session)
+
+        # V1-QualityGateMetric: measure properties dropping out of the eligible
+        # pool BEFORE pair generation. Surfaces silent recall loss (missing
+        # embeddings, descriptions <50 chars, NULL municipality, no bed/land).
+        qg_metrics = await self._measure_quality_gate(session)
+        for k, v in qg_metrics.items():
+            stats[k] = v
+        if qg_metrics:
+            logger.info(
+                f"[Matcher] quality gate: {qg_metrics['qg_eligible']}/"
+                f"{qg_metrics['qg_active']} active eligible "
+                f"({qg_metrics['qg_dropped']} dropped) — drop reasons: "
+                f"no_embed={qg_metrics['qg_drop_no_embedding']} "
+                f"no_hash={qg_metrics['qg_drop_no_content_hash']} "
+                f"no_muni={qg_metrics['qg_drop_no_municipality']} "
+                f"no_cat={qg_metrics['qg_drop_no_category']} "
+                f"no_bed_land={qg_metrics['qg_drop_no_bed_or_land']} "
+                f"short_desc={qg_metrics['qg_drop_short_desc']}"
+            )
 
         stock_phashes = await self._build_stock_phashes(session)
         logger.info(
@@ -214,8 +368,7 @@ class InternalDuplicateDetector:
         logger.info(f"[Matcher] found pairs > {settings.SIM_REJECT}: {len(rows)}")
 
         # --- Levels 2+3: pre-Vision classification ------------------------
-        edges = self._classify_pairs(rows, stock_phashes)
-
+        edges, stats["classify_errors"] = self._classify_pairs(rows, stock_phashes)
         pending_count = sum(1 for e in edges if e.verdict == "merge_pending")
         logger.info(
             f"[Matcher] pre-Vision: "
@@ -230,7 +383,6 @@ class InternalDuplicateDetector:
         # --- DSU ----------------------------------------------------------
         dsu = _DSU()
         edges_by_pair: Dict[Tuple[str, str], _EdgeMeta] = {}
-
         for edge in edges:
             # reject_vision edges DO NOT participate in clustering at all —
             # they're filed in AIDuplicateFeedback and that's it.
@@ -238,21 +390,47 @@ class InternalDuplicateDetector:
                 continue
             dsu.add(edge.a_id)
             dsu.add(edge.b_id)
-            if edge.verdict == "merge_approved":
+            if edge.verdict in ("merge_approved", "merge_pending"):
+                # V1-Recall-1: include pending edges so pure gray-zone
+                # components still surface as PENDING clusters for admin
+                # review (otherwise they'd be lost as singletons and the
+                # gray-zone signal would silently disappear).
                 dsu.union(edge.a_id, edge.b_id)
             edges_by_pair[(edge.a_id, edge.b_id)] = edge
 
         components = dsu.components()
         logger.info(f"[Matcher] components after union-find: {len(components)}")
 
-        # --- persist clusters ---------------------------------------------
+        # --- persist clusters (V1-Robust-1: per-component savepoint) ------
         for member_ids in components.values():
-            comp_stats = await self._persist_component(
-                session, member_ids, edges_by_pair
+            try:
+                # SAVEPOINT per component — if persist raises, only this
+                # component's changes are rolled back. Other components and
+                # the earlier session work survive.
+                async with session.begin_nested():
+                    comp_stats = await self._persist_component(
+                        session, member_ids, edges_by_pair
+                    )
+                # Aggregate stats only on success (savepoint released)
+                for k, v in comp_stats.items():
+                    if k in stats:
+                        stats[k] += v
+            except Exception as e:
+                # Savepoint auto-rolled-back by `async with` context exit.
+                stats["component_errors"] += 1
+                preview = list(member_ids)[:3]
+                tail = "..." if len(member_ids) > 3 else ""
+                logger.error(
+                    f"[Matcher] persist component failed members={preview}{tail} "
+                    f"({len(member_ids)} total): {type(e).__name__}: {e}"
+                )
+                continue
+
+        if stats["component_errors"]:
+            logger.warning(
+                f"[Matcher] _persist_component: {stats['component_errors']}/"
+                f"{len(components)} components failed (rolled back via savepoint)"
             )
-            for k, v in comp_stats.items():
-                if k in stats:
-                    stats[k] += v
 
         # CRITICAL: flush ORM state before raw-SQL orphan delete.
         # Otherwise, raw DELETE may see in-memory clusters as "orphan"
@@ -370,6 +548,37 @@ class InternalDuplicateDetector:
         )
 
     # =============================================================
+    # Quality Gate metric (V1-QualityGateMetric)
+    # =============================================================
+    async def _measure_quality_gate(
+        self,
+        session: AsyncSession,
+    ) -> Dict[str, int]:
+        """
+        Count properties dropped by the eligible CTE filters.
+
+        Returns flat dict of qg_* counters for observability. Drop reasons
+        may overlap (one property can fail multiple checks), so individual
+        drop counts may sum to more than total dropped.
+        """
+        row = (await session.execute(_QUALITY_GATE_SQL)).first()
+        if row is None:
+            return {}
+        active = int(row.active_count or 0)
+        eligible = int(row.eligible_count or 0)
+        return {
+            "qg_active":               active,
+            "qg_eligible":             eligible,
+            "qg_dropped":              active - eligible,
+            "qg_drop_no_embedding":    int(row.drop_no_embedding or 0),
+            "qg_drop_no_content_hash": int(row.drop_no_content_hash or 0),
+            "qg_drop_no_municipality": int(row.drop_no_municipality or 0),
+            "qg_drop_no_category":     int(row.drop_no_category or 0),
+            "qg_drop_no_bed_or_land":  int(row.drop_no_bed_or_land or 0),
+            "qg_drop_short_desc":      int(row.drop_short_desc or 0),
+        }
+
+    # =============================================================
     # Level 3: stock pHash
     # =============================================================
     async def _build_stock_phashes(self, session: AsyncSession) -> Set[str]:
@@ -386,39 +595,80 @@ class InternalDuplicateDetector:
         self,
         rows: Iterable,
         stock_phashes: Set[str],
-    ) -> List[_EdgeMeta]:
+    ) -> Tuple[List[_EdgeMeta], int]:
+        """
+        Classify each candidate pair into merge_approved | merge_pending.
+
+        Returns (edges, error_count). Per-pair errors are isolated and logged;
+        a single malformed row does not abort the entire classification phase
+        (V1-Robust-1).
+        """
         edges: List[_EdgeMeta] = []
-
+        errors = 0
+        category_skipped = 0
+        total = 0
         for row in rows:
-            a_id        = str(row.a_id)
-            b_id        = str(row.b_id)
-            similarity  = float(row.similarity)
-            a_phashes   = list(row.a_phashes or [])
-            b_phashes   = list(row.b_phashes or [])
+            total += 1
+            try:
+                a_id        = str(row.a_id)
+                b_id        = str(row.b_id)
+                similarity  = float(row.similarity)
+                a_phashes   = list(row.a_phashes or [])
+                b_phashes   = list(row.b_phashes or [])
 
-            phash_matches = PHashService.count_matching(
-                a_phashes, b_phashes, common_to_ignore=stock_phashes
-            )
+                # V1-Precision-1: category prefilter. Pair survives only if
+                # both sides canonicalize to the same family. Prevents e.g.
+                # Villa<>Apartment matches that high cosine alone might allow.
+                a_cat = _canonicalize_category(getattr(row, "a_category", None))
+                b_cat = _canonicalize_category(getattr(row, "b_category", None))
+                if a_cat is None or b_cat is None or a_cat != b_cat:
+                    category_skipped += 1
+                    continue
 
-            if similarity > settings.SIM_AUTO_MERGE:
-                verdict = "merge_approved"
-            elif phash_matches >= settings.PHASH_MIN_MATCHES:
-                verdict = "merge_approved"
-                logger.info(
-                    f"[Matcher] pHash bypass {a_id[:8]}<>{b_id[:8]} "
-                    f"({phash_matches} matches, sim={similarity:.3f})"
+                phash_matches = PHashService.count_matching(
+                    a_phashes, b_phashes, common_to_ignore=stock_phashes
                 )
-            else:
-                verdict = "merge_pending"
 
-            edges.append(_EdgeMeta(
-                a_id=a_id, b_id=b_id,
-                similarity=similarity,
-                phash_matches=phash_matches,
-                verdict=verdict,
-            ))
+                if similarity > settings.SIM_AUTO_MERGE:
+                    verdict = "merge_approved"
+                elif phash_matches >= settings.PHASH_MIN_MATCHES:
+                    verdict = "merge_approved"
+                    logger.info(
+                        f"[Matcher] pHash bypass {a_id[:8]}<>{b_id[:8]} "
+                        f"({phash_matches} matches, sim={similarity:.3f})"
+                    )
+                else:
+                    verdict = "merge_pending"
 
-        return edges
+                edges.append(_EdgeMeta(
+                    a_id=a_id, b_id=b_id,
+                    similarity=similarity,
+                    phash_matches=phash_matches,
+                    verdict=verdict,
+                ))
+            except Exception as e:
+                # V1-Robust-1: per-pair error isolation. Log and continue
+                # rather than aborting the whole classification loop.
+                errors += 1
+                a_dbg = str(getattr(row, "a_id", "?"))[:8]
+                b_dbg = str(getattr(row, "b_id", "?"))[:8]
+                logger.warning(
+                    f"[Matcher] classify pair {a_dbg}<>{b_dbg} failed: "
+                    f"{type(e).__name__}: {e}"
+                )
+                continue
+
+        if errors:
+            logger.warning(
+                f"[Matcher] _classify_pairs: skipped {errors}/{total} "
+                f"malformed pairs"
+            )
+        if category_skipped:
+            logger.info(
+                f"[Matcher] _classify_pairs: {category_skipped}/{total} pairs "
+                f"skipped by category mismatch (V1-Precision-1)"
+            )
+        return edges, errors
 
     # =============================================================
     # Cluster persistence — unchanged from Партия 3
@@ -430,10 +680,12 @@ class InternalDuplicateDetector:
         edges_by_pair: Dict[Tuple[str, str], _EdgeMeta],
     ) -> Dict[str, int]:
         out = {
-            "approved_merged":    0,
+            # V1-Cleanup: approved_merged removed (see run() comment).
             "approved_singleton_skipped": 0,
             "pending":            0,
             "locked_preserved":   0,
+            "gray_zone_clusters": 0,   # V1-Recall-1: 1 if this component is pending-only
+            "proposals_created":  0,   # V1-AdminAuthority: number of proposals INSERT'ed
         }
 
         if len(member_ids) == 1:
@@ -460,6 +712,15 @@ class InternalDuplicateDetector:
         max_sim = max((e.similarity for e in edges_in_comp), default=None)
         max_phash = max((e.phash_matches for e in edges_in_comp), default=0)
         any_pending = any(e.verdict == "merge_pending" for e in edges_in_comp)
+        # V1-Recall-1: component is "rescued" if it exists ONLY due to pending
+        # edges being unioned (no approved edges). Track for observability —
+        # this measures how much gray-zone signal V1-Recall-1 recovers vs the
+        # pre-fix behavior where such components were silently dropped.
+        all_pending = bool(edges_in_comp) and all(
+            e.verdict == "merge_pending" for e in edges_in_comp
+        )
+        if all_pending:
+            out["gray_zone_clusters"] = 1
 
         existing_cluster_ids = {p.cluster_id for p in props if p.cluster_id}
         locked_cluster: Optional[PropertyCluster] = None
@@ -474,13 +735,120 @@ class InternalDuplicateDetector:
                 locked_cluster = locked
 
         if locked_cluster is not None:
+            # Detect new members: properties in this component NOT already
+            # in the locked cluster. They are candidates for joining it.
+            new_members = [p for p in props if p.cluster_id != locked_cluster.id]
+
+            if new_members and locked_cluster.status == ClusterStatus.APPROVED:
+                # =============================================================
+                # V1-AdminAuthority (Sprint 8): admin verdict is supreme.
+                # =============================================================
+                # An APPROVED+locked cluster is sacrosanct. Instead of reverting
+                # it to PENDING (Sprint 7 Task E behavior, which destroyed
+                # admin's verdict + deleted PowerObject), we create PROPOSAL
+                # records. Admin decides per-property:
+                #   * APPROVE proposal → property added to cluster
+                #   * REJECT proposal  → pairs blacklisted in feedbacks;
+                #                        cluster intact
+                #
+                # Constraints in this branch:
+                #   - DO NOT reassign new_members.cluster_id
+                #   - DO NOT touch locked_cluster.status / verdict_locked*
+                #   - DO NOT delete PowerObject
+                #   - DO refresh ai_score / phash_matches (new evidence merits it)
+                # =============================================================
+
+                # Existing members of this cluster (queried from DB rather
+                # than `props`, because props only contains this component's
+                # members — the cluster may have additional members not in
+                # this component).
+                existing_member_rows = (await session.execute(
+                    select(Property.id).where(
+                        Property.cluster_id == locked_cluster.id
+                    )
+                )).scalars().all()
+                existing_member_ids = {str(pid) for pid in existing_member_rows}
+
+                proposals_created = 0
+                for new_member in new_members:
+                    nm_id = str(new_member.id)
+
+                    # Collect per-pair evidence: edges from new_member to
+                    # ACTUAL existing cluster members (not to other new_members).
+                    evidence: List[Dict] = []
+                    for (a, b), edge in edges_by_pair.items():
+                        other_id: Optional[str] = None
+                        if a == nm_id and b in existing_member_ids:
+                            other_id = b
+                        elif b == nm_id and a in existing_member_ids:
+                            other_id = a
+                        if other_id is not None:
+                            evidence.append({
+                                "member_id":     other_id,
+                                "similarity":    edge.similarity,
+                                "phash_matches": edge.phash_matches,
+                            })
+
+                    if not evidence:
+                        # Indirect link (via other new_members in same
+                        # component) — skip; direct evidence will emerge
+                        # in a future run as cluster grows naturally.
+                        continue
+
+                    max_ev_sim   = max(e["similarity"]    for e in evidence)
+                    max_ev_phash = max(e["phash_matches"] for e in evidence)
+
+                    await session.execute(
+                        text("""
+                            INSERT INTO cluster_member_proposals
+                              (cluster_id, property_id, ai_score,
+                               phash_matches, evidence_pairs)
+                            VALUES
+                              (:cluster_id, :property_id, :ai_score,
+                               :phash_matches, :evidence::jsonb)
+                            ON CONFLICT (cluster_id, property_id)
+                              WHERE status = 'PENDING'
+                              DO NOTHING
+                        """),
+                        {
+                            "cluster_id":    str(locked_cluster.id),
+                            "property_id":   nm_id,
+                            "ai_score":      max_ev_sim,
+                            "phash_matches": max_ev_phash,
+                            "evidence":      json.dumps(evidence),
+                        },
+                    )
+                    proposals_created += 1
+
+                # Refresh cluster metadata (new evidence merits update),
+                # but DO NOT touch status / verdict_locked.
+                if max_sim is not None and (
+                    locked_cluster.ai_score is None
+                    or max_sim > locked_cluster.ai_score
+                ):
+                    locked_cluster.ai_score = max_sim
+                if max_phash > (locked_cluster.phash_matches or 0):
+                    locked_cluster.phash_matches = max_phash
+                locked_cluster.updated_at = utcnow()
+
+                logger.info(
+                    f"[Matcher/V1-AdminAuthority] cluster "
+                    f"{str(locked_cluster.id)[:8]} (APPROVED, locked) — "
+                    f"created {proposals_created} proposals for new "
+                    f"members; cluster unchanged"
+                )
+                out["proposals_created"] = proposals_created
+                return out
+
+            # =================================================================
+            # Existing path: locked cluster is PENDING, or APPROVED with no new
+            # members. Reassign all members, refresh metadata, preserve cluster.
+            # =================================================================
             for p in props:
                 p.cluster_id = locked_cluster.id
+
             # Bug #66 fix: recompute member_count from the authoritative source
-            # (Property.cluster_id), not from len(props). The connected component
-            # being promoted may contain only a SUBSET of the locked cluster's
-            # true membership; using len(props) would undercount and leave
-            # member_count desynced from reality until the next cluster-write.
+            # (Property.cluster_id), not from len(props).
             await session.flush()
             locked_cluster.member_count = (await session.execute(
                 select(func.count(Property.id))
@@ -490,9 +858,16 @@ class InternalDuplicateDetector:
             locked_cluster.phash_matches = max_phash
             locked_cluster.updated_at = utcnow()
             out["locked_preserved"] = 1
+
             return out
 
-        new_status = ClusterStatus.PENDING if any_pending else ClusterStatus.APPROVED
+        # Sprint 7 decision: ALL new clusters require human review.
+        # Previously: auto-APPROVED if all edges were merge_approved (high
+        # confidence + photo matches + Vision confident). Now: always PENDING.
+        # Trade-off — more admin work, but full audit trail (verdict_locked_by
+        # gets populated for every cluster) + admin catches algorithmic edge
+        # cases. Revert this line to restore auto-approve behavior.
+        new_status = ClusterStatus.PENDING
 
         target_cluster: Optional[PropertyCluster] = None
         if existing_cluster_ids:
@@ -511,6 +886,7 @@ class InternalDuplicateDetector:
                 member_count=len(props),       # corrected after flush below (Bug #66)
                 ai_score=max_sim,
                 phash_matches=max_phash,
+                engine_version='1',            # V1-EngineVersionExplicit: don't rely on column server-default
             )
             session.add(target_cluster)
             await session.flush()
@@ -537,11 +913,11 @@ class InternalDuplicateDetector:
             .where(Property.cluster_id == target_cluster.id)
         )).scalar_one()
 
-        if new_status == ClusterStatus.APPROVED:
-            out["approved_merged"] = 1
-        else:
-            out["pending"] = 1
-
+        # V1-Cleanup: simplified dead branch. new_status is hardcoded
+        # to ClusterStatus.PENDING above (Sprint 7 decision), so the
+        # APPROVED check was unreachable. If auto-approve is restored
+        # later, reintroduce the conditional.
+        out["pending"] = 1
         return out
 
     async def _release_sold_clusters(self, session: AsyncSession) -> int:
@@ -563,9 +939,25 @@ class InternalDuplicateDetector:
         return count
 
     async def _delete_orphan_clusters(self, session: AsyncSession) -> int:
+        """Delete engine 1 orphan clusters (no members via Property.cluster_id FK).
+
+        Sprint 7 cross-engine bug fix: explicitly scoped to engine_version='1'.
+
+        Without the engine_version filter, v2 clusters get false-positive
+        matched as orphans because they track membership via
+        cluster_v2_members junction (NOT Property.cluster_id FK), so the
+        NOT EXISTS clause is ALWAYS true for them. Result: engine 1 was
+        silently destroying ALL PENDING v2 clusters on each daily sync,
+        forcing engine 2 to recreate them from scratch — which looked
+        like 'engine 2 rebuild' behaviour but was actually engine 1
+        sabotage. Engine 2's writer.py supports incremental attachment
+        (_update_attachment) — once engine 1 stops wiping, v2 clusters
+        persist across runs correctly.
+        """
         result = await session.execute(text("""
             DELETE FROM property_clusters c
-            WHERE c.verdict_locked = false
+            WHERE c.engine_version = '1'
+              AND c.verdict_locked = false
               AND NOT EXISTS (
                   SELECT 1 FROM properties p WHERE p.cluster_id = c.id
               )
@@ -573,5 +965,5 @@ class InternalDuplicateDetector:
         """))
         count = len(result.fetchall())
         if count:
-            logger.info(f"[Matcher] removed {count} orphan clusters")
+            logger.info(f"[Matcher] removed {count} orphan clusters (engine 1 only)")
         return count

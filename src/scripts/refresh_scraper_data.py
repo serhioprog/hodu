@@ -82,6 +82,14 @@ DOMAIN_REGISTRY: dict[str, str] = {
         "src.scrapers.real_estate_center_SJ:RealEstateCenterScraper",
     "glrealestate.gr":
         "src.scrapers.gl_real_estate:GLRealEstateScraper",
+    "dionisiou-realestate.com":
+        "src.scrapers.dionisiou_realestate:DionisiouRealEstateScraper",
+    "ellasestate.com":
+        "src.scrapers.ellas_estate:EllasEstateScraper",
+    "greekexclusiveproperties.com":
+        "src.scrapers.greek_exclusive_properties:GreekExclusiveScraper",
+    "kwgreece.gr":
+        "src.scrapers.kw_greece:KWGreeceScraper",
 }
 
 

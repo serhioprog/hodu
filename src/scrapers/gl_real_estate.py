@@ -262,15 +262,11 @@ class GLRealEstateScraper(EnrichmentMixin, BaseScraper):
                         # Detail page always has the authoritative price; this
                         # is for fast filtering during PHASE 1 only.
                         price_val = None
-                        for el in card.css("h5, h6, span, div, strong"):
-                            text = el.text() or ""
-                            text_lower = text.lower()
-                            if "€" in text_lower or (
-                                "price" in text_lower
-                                and any(c.isdigit() for c in text_lower)
-                            ):
-                                price_val = text.strip()
-                                break
+                        card_text = card.text() or ""
+                        # Match digits with EU thousand separators, then € symbol — captures ONLY the price
+                        m = re.search(r"(\d[\d.,]*)\s*€", card_text)
+                        if m:
+                            price_val = m.group(0)
 
                         location_node = card.css_first(".fa-map-marker")
                         id_node = card.css_first("span")

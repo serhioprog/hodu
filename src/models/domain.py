@@ -131,11 +131,23 @@ class PropertyCluster(Base):
     )
 
     # Sprint 7 Phase B — engine v2 members via cluster_v2_members junction
+    # Sprint 7 Phase B — engine v2 members via cluster_v2_members junction
     members_v2 = relationship(
     "Property",
     secondary=cluster_v2_members_table,
     viewonly=True,
-)
+    )
+
+    # Sprint 7 Task B.3 — agent who approved/created the cluster.
+    # NULL while PENDING (engine has no human author yet). Set by
+    # _manual_verdict (approve path) and manual-merge endpoint.
+    # ON DELETE SET NULL — if agent gets deleted, cluster keeps
+    # historical record with the FK nulled; template falls back to
+    # "[deleted user]".
+    verdict_locked_by_agent = relationship(
+        "Agent",
+        foreign_keys=[verdict_locked_by],
+    )
 
     power_object = relationship(
         "PowerProperty",
@@ -334,6 +346,11 @@ class Agent(Base):
     phone     = Column(String(50),  nullable=True)
     is_active = Column(Boolean,     default=True)
     is_admin  = Column(Boolean,     default=False)
+    # Sprint 7 Phase C: Reviewer role — can manage Properties + Duplicates
+    # tabs but NOT Users / Settings / Scrapers / Email. Admin (is_admin=True)
+    # implicitly has all reviewer permissions via OR-check in
+    # get_current_reviewer() — no need to set both flags True.
+    is_reviewer = Column(Boolean, default=False, server_default="false", nullable=False)
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
     devices = relationship("AgentDevice", back_populates="agent", cascade="all, delete-orphan")
@@ -466,6 +483,97 @@ class AIDuplicateFeedback(Base):
     __table_args__ = (
         UniqueConstraint('prop_a_id', 'prop_b_id', name='uix_ai_feedback_pair'),
     )
+
+
+# =============================================================
+# V1-AdminAuthority (Sprint 8) — Cluster member proposals
+# =============================================================
+
+class ProposalStatus(str, enum.Enum):
+    """Lifecycle of a cluster_member_proposal row.
+
+    PENDING  — created by Engine 1 detector, awaiting admin verdict
+    APPROVED — admin accepted: property added to cluster, member_count++
+    REJECTED — admin rejected: pairs blacklisted in ai_duplicate_feedbacks;
+               cluster status unchanged
+    """
+    PENDING  = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
+class ClusterMemberProposal(Base):
+    """Engine 1 proposals to add new candidate members to locked+APPROVED clusters.
+
+    Source: Sprint 8 V1-AdminAuthority architectural shift. Replaces Sprint 7
+    Task E revert-to-PENDING behavior (which destroyed admin verdicts +
+    deleted PowerObject). Now admin authority over APPROVED clusters is
+    supreme — new evidence creates proposals, not destruction.
+
+    Created by: InternalDuplicateDetector._persist_component (raw SQL INSERT
+    with ON CONFLICT DO NOTHING via the cmp_unique_pending partial index).
+
+    Admin decision flow:
+      * APPROVE → Property.cluster_id = proposal.cluster_id, member_count++,
+                  status='APPROVED'.
+      * REJECT  → Insert ai_duplicate_feedbacks for each evidence pair;
+                  status='REJECTED'. Cluster + property otherwise unchanged.
+
+    Idempotency: unique partial index on (cluster_id, property_id) WHERE
+    status='PENDING' prevents duplicate PENDING rows. Once decided, a new
+    PENDING can emerge if fresh evidence appears (e.g. new photos).
+
+    Migration: 016_cluster_member_proposals.sql.
+    """
+    __tablename__ = "cluster_member_proposals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    cluster_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("property_clusters.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    property_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("properties.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Aggregate scores for admin UI ranking
+    ai_score      = Column(Float,   nullable=True)
+    phash_matches = Column(Integer, nullable=False, default=0, server_default="0")
+
+    # Per-pair evidence for admin drill-down:
+    # [{"member_id": uuid, "similarity": float, "phash_matches": int}, ...]
+    evidence_pairs = Column(JSONB, nullable=True)
+
+    # Lifecycle
+    status = Column(
+        SAEnum(ProposalStatus, name="cluster_proposal_status", create_type=False),
+        nullable=False,
+        default=ProposalStatus.PENDING,
+        server_default="PENDING",
+        index=True,
+    )
+    proposed_at     = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    decided_at      = Column(DateTime(timezone=True), nullable=True)
+    decided_by      = Column(
+        UUID(as_uuid=True),
+        ForeignKey("agents.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    decision_reason = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    # Relationships
+    cluster  = relationship("PropertyCluster", foreign_keys=[cluster_id])
+    property = relationship("Property",        foreign_keys=[property_id])
+    decider  = relationship("Agent",           foreign_keys=[decided_by])
 
 
 # =============================================================

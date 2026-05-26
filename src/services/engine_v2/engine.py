@@ -191,6 +191,14 @@ class HybridEngine:
         cached_count = 0
         skipped_count = 0
         errors_count = 0
+        processed_in_batch = 0
+
+        # Sprint 7 Phase B durability fix: commit every N pairs so writes
+        # are visible incrementally and a mid-run crash only loses the
+        # current batch (not 6+ hours of T3 work). Caller's `async with`
+        # context still owns the connection; mid-loop commit just ends
+        # the current txn — SQLAlchemy auto-begins the next on first execute.
+        COMMIT_EVERY_N_PAIRS = 100
 
         for a_id, b_id in candidate_pairs:
             try:
@@ -239,13 +247,43 @@ class HybridEngine:
                     confidence=verdict.confidence,
                 ))
 
+                processed_in_batch += 1
+                if processed_in_batch >= COMMIT_EVERY_N_PAIRS:
+                    await session.commit()
+                    logger.info(
+                        "[run_full_dedup] checkpoint: +{n} committed "
+                        "(scored={t} cached={c} skipped={s} errors={e})",
+                        n=processed_in_batch, t=len(scored_pairs),
+                        c=cached_count, s=skipped_count, e=errors_count,
+                    )
+                    processed_in_batch = 0
+
             except Exception as e:
                 logger.error(
                     "[run_full_dedup] pair {a}/{b} failed: {err}",
                     a=str(a_id)[:8], b=str(b_id)[:8], err=str(e),
                 )
                 errors_count += 1
+                # CRITICAL: clear InFailedSQLTransactionError state.
+                # Without rollback, every subsequent execute() in the
+                # loop fails with "current transaction is aborted" —
+                # the May 14 cascade. Rollback discards the current
+                # batch's uncommitted writes; SQLAlchemy auto-begins a
+                # new txn on the next execute.
+                try:
+                    await session.rollback()
+                except Exception:
+                    pass
+                processed_in_batch = 0  # txn was discarded
                 continue
+
+        # Flush any partial batch left over after the loop
+        if processed_in_batch > 0:
+            await session.commit()
+            logger.info(
+                "[run_full_dedup] final loop commit: {n} pairs",
+                n=processed_in_batch,
+            )
 
         # Step 3: cluster construction (metrics only in shadow mode)
         builder = DSUClusterBuilder(scored_pairs)
@@ -257,6 +295,10 @@ class HybridEngine:
         # continues to use Property.cluster_id FK exclusively.
         from .writer import write_cluster_build_result
         writer_report = await write_cluster_build_result(session, cluster_result)
+        # Sprint 7 Phase B: commit so clusters + cluster_v2_members are
+        # durable before the function returns. Caller's commit becomes a
+        # no-op safety net.
+        await session.commit()
         logger.info(
             "[run_full_dedup] writer: {n_new} new + {n_attach} attached, "
             "{n_props} props, {n_flags} mismerge flags",

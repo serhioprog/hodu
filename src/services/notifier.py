@@ -185,3 +185,125 @@ async def send_magic_links_to_agents(
         await session.commit()
         logger.info(f"[Notifier] dispatch done: {stats}")
         return stats
+
+# =============================================================
+# SINGLE-AGENT MAGIC LINK (admin-triggered, e.g. onboarding)
+# =============================================================
+def _build_welcome_html(agent_name: str, link: str) -> str:
+    """Welcome / onboarding email template — different from daily report.
+    Used for newly created users or resending access when tunnel changes."""
+    safe_name = escape(agent_name or "there")
+    safe_link = escape(link, quote=True)
+    return f"""
+<html>
+<body style="font-family: sans-serif; color: #222; background-color: #f7f7f7; padding: 20px;">
+    <div style="max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; border: 1px solid #eee;">
+        <h1 style="color: #ff385c; margin-bottom: 20px;">hodu.</h1>
+        <p>Hello, <b>{safe_name}</b>!</p>
+        <p>You have access to the hodu. real estate platform.</p>
+        <p>Click the button below to sign in. This link is valid for 48 hours.</p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{safe_link}" style="background: #ff385c; color: white; padding: 15px 25px;
+               text-decoration: none; border-radius: 8px; font-weight: bold;">Sign In to hodu.</a>
+        </div>
+        <p style="font-size: 12px; color: #888;">This is a private secure link. Do not forward this email.</p>
+    </div>
+</body>
+</html>
+"""
+
+
+async def send_magic_link_to_agent(agent_id: str) -> dict:
+    """
+    Generate a fresh magic-link token for a single agent and try to
+    deliver it via email. Always returns the URL so the admin can
+    copy/paste it (Telegram, etc.) — useful when:
+      • SMTP is misconfigured / down
+      • APP_URL doesn't match the current tunnel URL
+      • Onboarding a new user and admin wants to verify the link
+
+    Token is created and committed BEFORE the email send attempt.
+    If SMTP fails, the token still exists and is reachable via the
+    returned URL — admin can distribute it manually.
+
+    Returns:
+        {
+            "url":   str,           # always present
+            "sent":  bool,          # True if email actually delivered
+            "email": str,           # recipient email (for UI display)
+            "error": str | None,    # SMTP error if any
+        }
+
+    Raises:
+        ValueError — agent not found OR agent.is_active=False
+    """
+    async with async_session_maker() as session:
+        agent = (await session.execute(
+            select(Agent).where(Agent.id == agent_id)
+        )).scalars().first()
+        if agent is None:
+            raise ValueError(f"Agent {agent_id} not found")
+        if not agent.is_active:
+            raise ValueError("Cannot send magic link to inactive agent")
+
+        # --- Stage + commit token first ---------------------------------
+        # Commit before SMTP so even if email send fails the URL still
+        # works when admin copy-pastes it elsewhere.
+        expires_at = _utcnow() + timedelta(hours=settings.TOKEN_TTL_HOURS)
+        token = AuthToken(
+            agent_id=agent.id,
+            token=secrets.token_urlsafe(32),
+            is_used=False,
+            expires_at=expires_at,
+        )
+        session.add(token)
+        await session.commit()
+
+        url = f"{settings.APP_URL}/auth/{token.token}"
+        result = {"url": url, "sent": False, "email": agent.email, "error": None}
+
+        # --- Best-effort SMTP send --------------------------------------
+        if not (settings.SMTP_USER and settings.SMTP_PASS and settings.SMTP_HOST):
+            result["error"] = "SMTP not configured"
+            logger.warning(
+                f"[Notifier] SMTP not configured — token created but not "
+                f"emailed; admin can use URL: {url[:50]}..."
+            )
+            return result
+
+        smtp: Optional[aiosmtplib.SMTP] = None
+        try:
+            smtp = aiosmtplib.SMTP(
+                hostname=settings.SMTP_HOST,
+                port=settings.SMTP_PORT,
+                start_tls=True,
+                timeout=20,
+            )
+            await smtp.connect()
+            await smtp.login(settings.SMTP_USER, settings.SMTP_PASS)
+
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = "hodu. | Your access link"
+            msg["From"]    = f"hodu. <{settings.SMTP_USER}>"
+            msg["To"]      = agent.email
+            msg.attach(MIMEText(
+                _build_welcome_html(agent.name, url),
+                "html",
+            ))
+
+            await smtp.send_message(msg)
+            result["sent"] = True
+            logger.success(f"[Notifier] magic link sent -> {agent.email}")
+            return result
+
+        except Exception as e:
+            logger.error(f"[Notifier] magic link send -> {agent.email} FAILED: {e}")
+            result["error"] = str(e)[:200]
+            return result
+
+        finally:
+            if smtp is not None:
+                try:
+                    await smtp.quit()
+                except Exception:
+                    pass

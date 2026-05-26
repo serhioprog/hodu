@@ -43,8 +43,18 @@ from src.scrapers.halkidiki_real_estate_hellenic_living import HalkidikiRealEsta
 from src.scrapers.real_estate_center_SJ import RealEstateCenterScraper
 from src.scrapers.sithonia_rental_sales import SithoniaRentalSalesScraper
 from src.scrapers.engel_voelkers import EngelVoelkersScraper
-from src.scrapers.sousouras_realestate import SousourasRealEstateScraper
+from src.scrapers.draft.sousouras_realestate import SousourasRealEstateScraper
 from src.scrapers.ellas_estate import EllasEstateScraper
+from src.scrapers.dionisiou_realestate import DionisiouRealEstateScraper
+from src.scrapers.kw_greece import KWGreeceScraper
+from src.scrapers.m_properties import MPropertiesScraper
+from src.scrapers.ergon_real_estate import ErgonRealEstateScraper
+from src.scrapers.clever_estate import CleverEstateScraper
+from src.scrapers.sithonia_properties import SithoniaPropertiesScraper
+#from src.scrapers.kanata_realestate import KanataRealEstateScraper
+from src.scrapers.edma_estate import EdmaEstateScraper
+from src.scrapers.greximo import GreximoScraper
+
 
 # --- DB & Core ---
 from src.core.config import settings
@@ -275,13 +285,22 @@ async def _run_scrapers(global_stats: Dict[str, int]) -> List[DomainSyncReport]:
         GLRealEstateScraper(),
         RealEstateCenterScraper(),
         GreekExclusiveScraper(),
-        #SousourasRealEstateScraper(),
+        #SousourasRealEstateScraper(), # blocked by PerimeterX
         SithoniaRentalSalesScraper(),
         HalkidikiEstateScraper(),
         EngelVoelkersScraper(),
         HalkidikiRealEstateScraper(),
         EllasEstateScraper(),
+        DionisiouRealEstateScraper(),
+        KWGreeceScraper(),
+        MPropertiesScraper(),
+        #ErgonRealEstateScraper(),  # blocked by PerimeterX
+        CleverEstateScraper(),
+        SithoniaPropertiesScraper(),
+        #KanataRealEstateScraper(), # blocked by PerimeterX
+        EdmaEstateScraper(),
         GrekodomDevelopmentScraper(),
+        GreximoScraper(),
     ]
 
     domain_reports: List[DomainSyncReport] = []
@@ -746,7 +765,32 @@ async def _run_mdm_pipeline() -> None:
     embedder = EmbeddingService()
     detector = InternalDuplicateDetector()
 
-    # Phase 1 shadow: engine v2 runs BEFORE the old engine on a SEPARATE
+    # Engine 1 (legacy InternalDuplicateDetector) runs FIRST so that a
+    # long-running engine v2 phase (T3 LLM scoring can take hours) can
+    # never starve production clustering. Engine 1 writes via its own
+    # session; engine v2 below opens a separate session.
+    async with async_session_maker() as session:
+        logger.info("[MDM] step 1: refresh embeddings")
+        await embedder.refresh_property_embeddings(session)
+
+        logger.info("[MDM] step 2: internal duplicate detection")
+        try:
+            await detector.run(session)
+        except Exception:
+            # V1-Defense: Engine 1 (production engine) failure MUST NOT block
+            # downstream MDM phases (Engine 2 shadow run + PowerObject gen).
+            # Mirrors the protective pattern used for Engine 2 below.
+            # logger.exception captures full traceback for diagnosis.
+            # Explicit rollback ensures session is clean before async-with
+            # closes it; uncommitted Engine 1 work is discarded.
+            # Embeddings already committed by EmbeddingService are preserved.
+            logger.exception("[MDM] engine 1 (InternalDuplicateDetector) FAILED")
+            try:
+                await session.rollback()
+            except Exception:
+                pass  # session may already be in aborted state — best effort
+
+    # Phase 1 shadow: engine v2 runs AFTER engine 1 on a SEPARATE
     # session so failures here cannot break the existing pipeline.
     # Gated by settings.USE_NEW_DUPLICATE_ENGINE (default False, opt-in
     # via .env). New engine writes only engine_v2_predictions + cache.
@@ -776,13 +820,6 @@ async def _run_mdm_pipeline() -> None:
             # Shadow mode MUST NOT block production pipeline.
             # logger.exception captures full traceback for diagnosis.
             logger.exception("[MDM] engine v2 shadow run FAILED")
-
-    async with async_session_maker() as session:
-        logger.info("[MDM] step 1: refresh embeddings")
-        await embedder.refresh_property_embeddings(session)
-
-        logger.info("[MDM] step 2: internal duplicate detection")
-        await detector.run(session)
 
 
 # =============================================================

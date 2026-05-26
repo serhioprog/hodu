@@ -1,0 +1,192 @@
+{# Sprint 8 V1-AdminAuthority — proposal card.
+   Engine 1 detected a new candidate for an already-APPROVED cluster.
+   Admin decides: APPROVE (add property to cluster, member_count++) or
+   REJECT (blacklist evidence pairs in ai_duplicate_feedbacks).
+   The target cluster's APPROVED verdict is preserved either way —
+   no PowerObject deletion, no status revert, no audit destruction.
+
+   Expected context: `proposal` is a ClusterMemberProposal with transient
+   `cluster_obj` (target PropertyCluster, eagerloaded members + agent)
+   and `candidate_obj` (Property being proposed, eagerloaded media)
+   attached by the /admin handler at hydration time. #}
+
+{% set cluster = proposal.cluster_obj %}
+{% set candidate = proposal.candidate_obj %}
+{% set existing_members = cluster.members if cluster else [] %}
+
+<div class="cluster-card proposal-card"
+     id="proposal-card-{{ proposal.id }}"
+     data-proposal-id="{{ proposal.id }}"
+     data-cluster-id="{{ cluster.id if cluster else '' }}"
+     data-property-id="{{ candidate.id if candidate else '' }}"
+     style="border-left: 4px solid #ff385c;">
+
+    <div class="cluster-header d-flex justify-content-between align-items-center">
+
+        <!-- LEFT: identity + status -->
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <span class="fw-bold text-dark" style="font-size: 15px;">
+                Proposal: {{ (proposal.id | string)[:8] | upper }}
+            </span>
+
+            <span class="badge" style="background: #fff0f2; color: #ff385c; font-weight: 700; border: none; padding: 5px 10px; border-radius: 6px;">
+                🔗 Member Proposal
+            </span>
+
+            {% if cluster %}
+            <span class="text-muted small">
+                → Cluster <strong class="text-dark">{{ (cluster.id | string)[:8] | upper }}</strong>
+                ({{ cluster.member_count }} members)
+            </span>
+            {% endif %}
+
+            {% set days_old = ((now_utc() - proposal.proposed_at).total_seconds() / 86400) | int %}
+            {% if days_old < 2 %}
+                {% set age_color = '#9CA3AF' %}{% set age_bg = '#F3F4F6' %}
+            {% elif days_old < 7 %}
+                {% set age_color = '#D97706' %}{% set age_bg = '#FEF3C7' %}
+            {% else %}
+                {% set age_color = '#DC2626' %}{% set age_bg = '#FEE2E2' %}
+            {% endif %}
+            <span class="badge" style="background-color: {{ age_bg }}; color: {{ age_color }}; font-weight: 600; border: none; padding: 5px 10px; border-radius: 6px;" title="Proposed {{ proposal.proposed_at | local_dt }}">
+                {% if days_old == 0 %}⏱ Today
+                {% elif days_old == 1 %}⏱ 1 day
+                {% else %}⏱ {{ days_old }} days
+                {% endif %}
+            </span>
+        </div>
+
+        <!-- CENTER: evidence metrics -->
+        <div class="d-flex align-items-center text-muted fw-medium" style="font-size: 13px;">
+            {% if proposal.ai_score is not none %}
+                <span>🤖 Текст: {{ (proposal.ai_score * 100) | round(1) }}%</span>
+                <div style="height: 14px; width: 1px; background-color: #e5e7eb; margin: 0 15px;"></div>
+            {% endif %}
+            {% if proposal.phash_matches and proposal.phash_matches > 0 %}
+                <span class="text-success fw-bold">🖼️ Фото: {{ proposal.phash_matches }} совпадений</span>
+            {% else %}
+                <span>🖼️ Фото: 0 совпадений</span>
+            {% endif %}
+        </div>
+
+        <!-- RIGHT: actions (Approve / Reject inline) -->
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-sm fw-bold shadow-none proposal-reject-btn"
+                    onclick="rejectProposal('{{ proposal.id }}')"
+                    style="background: #fff0f2; color: #ff385c; border: 1px solid #ffd1d8; border-radius: 8px; padding: 6px 14px;">
+                ✕ Reject
+            </button>
+            <button type="button" class="btn btn-sm fw-bold shadow-none proposal-approve-btn"
+                    onclick="approveProposal('{{ proposal.id }}')"
+                    style="background: #DCFCE7; color: #059669; border: 1px solid #BBF7D0; border-radius: 8px; padding: 6px 14px;">
+                ✓ Approve
+            </button>
+        </div>
+    </div>
+
+    <!-- Sub-row: detection context + target cluster's approval audit -->
+    <div class="cluster-meta px-3 py-2 small d-flex flex-wrap align-items-center"
+         style="background: #fafafa; border-bottom: 1px solid #f3f4f6; color: #6B7280; gap: 8px 14px;">
+        <span title="Detected by Engine 1 (InternalDuplicateDetector)">
+            🔍 Detected by <strong class="text-dark">Engine 1</strong>
+        </span>
+        <span class="text-muted">·</span>
+        <span title="Proposed at (Europe/Athens)">
+            {{ proposal.proposed_at | local_dt }}
+        </span>
+        {% if cluster and cluster.verdict_locked_by_agent %}
+        <span class="text-muted">·</span>
+        <span title="Target cluster's prior admin verdict (preserved)">
+            🎯 Cluster approved by <strong class="text-dark">{{ cluster.verdict_locked_by_agent.name }}</strong>
+            at {{ cluster.verdict_locked_at | local_dt }}
+        </span>
+        {% elif cluster %}
+        <span class="text-muted">·</span>
+        <span>🎯 Cluster approved {{ cluster.verdict_locked_at | local_dt if cluster.verdict_locked_at else '(legacy)' }}</span>
+        {% endif %}
+    </div>
+
+    <!-- Existing cluster members (read-only context) -->
+    {% if existing_members %}
+    <div style="padding: 10px 20px 4px; background: #fdfdfd; border-bottom: 1px solid #f3f4f6;">
+        <small class="text-muted fw-bold text-uppercase" style="font-size: 11px; letter-spacing: 0.6px;">
+            Existing cluster members ({{ existing_members | length }})
+        </small>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-borderless mb-0 table-custom" style="table-layout: fixed; width: 100%;">
+            <thead style="background:#fdfdfd; border-bottom: 1px solid #f3f4f6;">
+                <tr>
+                    <th style="width: 75px; padding-left: 20px;">Photo</th>
+                    <th style="width: 25%;">Source</th>
+                    <th style="width: 22%;">Area</th>
+                    <th style="width: 17%;">Type</th>
+                    <th style="width: 10%;">Size</th>
+                    <th style="width: 14%;">Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for prop in existing_members %}
+                <tr class="clickable-row {% if not prop.is_active %}text-muted{% endif %}"
+                    onclick="window.open('/property/{{ prop.id }}', '_blank')">
+                    <td style="padding-left:20px;">
+                        {% if prop.media %}
+                            <img src="/{{ prop.media[0].local_file_path | fix_path }}" class="admin-thumb" alt="thumb" style="border-radius: 4px; border: 1px solid #eee; {% if not prop.is_active %}opacity: 0.5;{% endif %}">
+                        {% else %}
+                            <div class="admin-thumb-empty" style="border-radius: 4px;">N/A</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="fw-bold text-dark text-truncate" title="{{ prop.source_domain }}">{{ prop.source_domain }}</div>
+                        <div class="small text-muted">
+                            ID: {{ prop.site_property_id }}
+                            {% if not prop.is_active %} · <span style="color:#9ca3af;">delisted</span>{% endif %}
+                        </div>
+                    </td>
+                    <td class="text-truncate text-muted fw-medium">{{ prop.calc_municipality or prop.area or '—' }}</td>
+                    <td class="text-truncate text-muted fw-medium">{{ prop.category or '—' }}</td>
+                    <td class="text-nowrap text-muted fw-medium">{% if prop.size_sqm %}{{ prop.size_sqm|int }} m²{% else %}—{% endif %}</td>
+                    <td class="fw-bold text-dark text-nowrap">{{ prop.price | euro }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Proposed addition — highlighted (pink-tinted background) -->
+    {% if candidate %}
+    <div style="padding: 10px 20px 4px; background: #fff8f9; border-top: 1px solid #ffe0e6; border-bottom: 1px solid #ffe0e6;">
+        <small class="fw-bold text-uppercase" style="font-size: 11px; letter-spacing: 0.6px; color: #ff385c;">
+            🆕 Proposed addition
+        </small>
+    </div>
+    <div class="table-responsive" style="background: #fffbfc;">
+        <table class="table table-borderless mb-0 table-custom" style="table-layout: fixed; width: 100%;">
+            <tbody>
+                <tr class="clickable-row {% if not candidate.is_active %}text-muted{% endif %}"
+                    onclick="window.open('/property/{{ candidate.id }}', '_blank')">
+                    <td style="width: 75px; padding-left:20px;">
+                        {% if candidate.media %}
+                            <img src="/{{ candidate.media[0].local_file_path | fix_path }}" class="admin-thumb" alt="thumb" style="border-radius: 4px; border: 1px solid #eee; {% if not candidate.is_active %}opacity: 0.5;{% endif %}">
+                        {% else %}
+                            <div class="admin-thumb-empty" style="border-radius: 4px;">N/A</div>
+                        {% endif %}
+                    </td>
+                    <td style="width: 25%;">
+                        <div class="fw-bold text-dark text-truncate" title="{{ candidate.source_domain }}">{{ candidate.source_domain }}</div>
+                        <div class="small text-muted">
+                            ID: {{ candidate.site_property_id }}
+                            {% if not candidate.is_active %} · <span style="color:#9ca3af;">delisted</span>{% endif %}
+                        </div>
+                    </td>
+                    <td style="width: 22%;" class="text-truncate text-muted fw-medium">{{ candidate.calc_municipality or candidate.area or '—' }}</td>
+                    <td style="width: 17%;" class="text-truncate text-muted fw-medium">{{ candidate.category or '—' }}</td>
+                    <td style="width: 10%;" class="text-nowrap text-muted fw-medium">{% if candidate.size_sqm %}{{ candidate.size_sqm|int }} m²{% else %}—{% endif %}</td>
+                    <td style="width: 14%;" class="fw-bold text-dark text-nowrap">{{ candidate.price | euro }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>

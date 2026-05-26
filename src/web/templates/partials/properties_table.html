@@ -1,0 +1,115 @@
+{# ====================================================================
+   partials/properties_table.html
+   
+   Reusable Properties table with server-side DataTable. Rendered in 3
+   places on the admin dashboard:
+     - Main Properties tab (cluster_filter='any', source toggle shown)
+     - Engine 1 Single sub-tab (cluster_filter='single_e1', no source toggle)
+     - Engine 2 Single sub-tab (cluster_filter='single_e2', no source toggle)
+   
+   Each instance is self-contained: its filter inputs are scoped to the
+   container via classes (.filter-search, .filter-area, ...) and its
+   <table> has a unique ID propertiesTable_{{ scope }}. The JS picks up
+   ALL containers via document.querySelectorAll('.properties-container')
+   and initialises a DataTable per container with appropriate
+   cluster_filter passed to /api/admin/properties.
+   
+   Required context variables (set via {% set %} before include):
+     scope                — unique slug ("main" | "singleE1" | "singleE2")
+     cluster_filter       — backend query param ("any" | "single_e1" | "single_e2")
+     show_source_toggle   — bool, render L2 source-filter pills
+   ==================================================================== #}
+<div class="properties-container" data-scope="{{ scope }}" data-cluster-filter="{{ cluster_filter }}">
+
+    {% if show_source_toggle %}
+    <ul class="nav nav-pills property-tabs" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active property-all-btn" type="button">All</button>
+        </li>
+        <li class="nav-item dropdown">
+            <button class="nav-link dropdown-toggle property-source-btn" data-bs-toggle="dropdown" aria-expanded="false" type="button">Source</button>
+            <ul class="dropdown-menu property-source-menu">
+                {# Items appended by JS from /api/admin/properties/filters #}
+            </ul>
+        </li>
+    </ul>
+    {% endif %}
+
+    <div class="filter-panel">
+        <div class="row align-items-end g-2">
+            <div class="col-auto mb-3">
+                <label class="filter-label">Show</label>
+                <select class="form-select form-select-sm filter-length" style="width: 70px;">
+                    <option value="10">10</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+
+            {# Hidden source select — drives ajax request even on Single tabs
+               (filled by JS regardless of show_source_toggle). #}
+            <select class="d-none filter-source"><option value="">All sites</option></select>
+
+            <div class="col mb-3">
+                <label class="filter-label">Search</label>
+                <input type="text" class="form-control form-control-sm filter-search" placeholder="Search...">
+            </div>
+
+            <div class="col mb-3">
+                <label class="filter-label">Area</label>
+                <select class="form-select form-select-sm filter-area"><option value="">All areas</option></select>
+            </div>
+
+            <div class="col mb-3">
+                <label class="filter-label">Type</label>
+                <select class="form-select form-select-sm filter-type"><option value="">All types</option></select>
+            </div>
+
+            <div class="col-auto mb-3">
+                <label class="filter-label">Price (€)</label>
+                <div class="input-group input-group-sm" style="width: 190px;">
+                    <input type="number" class="form-control filter-price-min" placeholder="Min" min="0">
+                    <span class="input-group-text price-dash" style="padding: 0 4px;">-</span>
+                    <input type="number" class="form-control filter-price-max" placeholder="Max" min="0">
+                </div>
+            </div>
+
+            <div class="col-auto mb-3">
+                <label class="filter-label">Status</label>
+                <select class="form-select form-select-sm filter-status" style="width: 110px;">
+                    <option value="">All</option>
+                    <option value="NEW">New</option>
+                    <option value="PRICE_CHANGED">Price drop</option>
+                    <option value="ACTIVE">Active</option>
+                    <option value="DELISTED">Delisted</option>
+                    <option value="SOLD">Sold</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-custom properties-table" id="propertiesTable_{{ scope }}">
+            <thead>
+                <tr>
+                    <th style="width: 40px;"></th>
+                    <th style="width: 60px;">Photo</th>
+                    <th>HODU ID</th>
+                    <th>Site ID</th>
+                    <th>Source</th>
+                    <th>Area</th>
+                    <th>Type</th>
+                    <th>Size</th>
+                    <th>Price</th>
+                    <th>Status</th>
+                    <th>Duplicates</th>
+                    <th>Last Checked</th>
+                </tr>
+            </thead>
+            <tbody>
+                {# Rows populated by serverSide DataTable AJAX — see initPropertiesContainer in admin_dashboard.html #}
+            </tbody>
+        </table>
+    </div>
+</div>

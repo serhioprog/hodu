@@ -10,19 +10,35 @@
 {% set active_members = members | selectattr('is_active') | list %}
 {% set all_delisted = active_members | length == 0 and members | length > 0 %}
 
-<div class="cluster-card" id="cluster-card-{{ cluster.id }}">
-    <!-- Шапка с flex-box выравниванием -->
+{# Sprint 7 Step 3: card is now view-only. ALL editing actions
+   (approve/reject/dissolve, remove member, merge selected members)
+   live in the cluster manage modal triggered by the "Manage" button.
+   The card root div carries data-* attributes the modal JS uses to
+   render full cluster + member detail without re-fetching. #}
+<div class="cluster-card"
+     id="cluster-card-{{ cluster.id }}"
+     data-cluster-id="{{ cluster.id }}"
+     data-cluster-status="{{ cluster.status.value if cluster.status.value is defined else cluster.status }}"
+     data-cluster-engine="{{ cluster.engine_version }}"
+     data-member-count="{{ cluster.member_count }}"
+     data-ai-score="{{ cluster.ai_score if cluster.ai_score is not none else '' }}"
+     data-phash-matches="{{ cluster.phash_matches or 0 }}"
+     data-created-at="{{ cluster.created_at | local_dt }}"
+     data-verdict-locked-at="{{ cluster.verdict_locked_at | local_dt if cluster.verdict_locked_at else '' }}"
+     data-creator-name="{{ cluster.verdict_locked_by_agent.name if cluster.verdict_locked_by_agent else '' }}"
+     data-is-manual-merge="{{ 'true' if cluster.notes and cluster.notes.startswith('Manual merge') else 'false' }}"
+     data-has-verdict-record="{{ 'true' if cluster.verdict_locked_at else 'false' }}"
+     data-is-reverted="{{ 'true' if cluster.notes and cluster.notes.startswith('Reverted to PENDING') else 'false' }}"
+     data-cluster-notes="{{ cluster.notes or '' }}">
+
     <div class="cluster-header d-flex justify-content-between align-items-center">
 
         <!-- ЛЕВАЯ ЧАСТЬ: ID и Статус -->
         <div class="d-flex align-items-center gap-3">
 
-            {# Bulk-action checkbox: only on PENDING clusters, because
-               APPROVED ones can't be re-approved/rejected as a group
-               (you'd dissolve them via the existing per-card buttons).
-               The checkbox lives left of the cluster ID so the user can
-               see selection at a glance while scrolling. The change
-               handler is wired in admin_dashboard.html. #}
+            {# Bulk-action checkbox stays on the card — operates across
+               multiple clusters at once (cluster-bulk-check), not per-cluster
+               actions. Per-cluster actions all live in modal. #}
             {% if cluster.status == 'PENDING' or cluster.status.value == 'PENDING' %}
                 <input type="checkbox"
                        class="cluster-bulk-check form-check-input"
@@ -38,13 +54,6 @@
             {% if cluster.status == 'PENDING' or cluster.status.value == 'PENDING' %}
                 <span class="badge cluster-status-badge" style="background-color: #FEF3C7; color: #D97706; font-weight: 700; border: none; padding: 5px 10px; border-radius: 6px;">Pending review</span>
 
-                {# Ageing indicator: shows how long this cluster has been waiting
-                   for an admin verdict. Color escalates with neglect:
-                     <2 days  → muted gray (fresh)
-                     2-6 days → amber  (getting old)
-                     7+ days  → red    (urgent)
-                   This nudges admins to clear out old pending items rather
-                   than letting clusters rot in limbo. #}
                 {% set days_pending = ((now_utc() - cluster.created_at).total_seconds() / 86400) | int %}
                 {% if days_pending < 2 %}
                     {% set age_color = '#9CA3AF' %}{% set age_bg = '#F3F4F6' %}
@@ -60,19 +69,24 @@
                     {% endif %}
                 </span>
 
-                {# Recurrence warning: this cluster contains pairs that admins
-                   previously rejected. Strong signal to take a careful look
-                   rather than auto-approving. Only shown for pending. #}
                 {% if cluster.feedback_recurrence is defined and cluster.feedback_recurrence and cluster.feedback_recurrence > 0 %}
                     <span class="badge" style="background-color: #FEE2E2; color: #B91C1C; font-weight: 600; border: none; padding: 5px 10px; border-radius: 6px;" title="This cluster contains property pairs that have been previously rejected as not-duplicates by admins. Re-evaluate carefully.">
                         ⚠️ Recurring{% if cluster.feedback_recurrence > 1 %} (×{{ cluster.feedback_recurrence }}){% endif %}
+                    </span>
+                {% endif %}
+
+                {# Sprint 7 Task E: Re-review badge for clusters that engine
+                   reverted from APPROVED back to PENDING when new property
+                   matched their members. Full audit trail in notes (tooltip). #}
+                {% if cluster.notes and cluster.notes.startswith('Reverted to PENDING') %}
+                    <span class="badge" style="background-color: #FEE2E2; color: #B91C1C; font-weight: 700; border: 1px solid #FCA5A5; padding: 5px 10px; border-radius: 6px;" title="{{ cluster.notes }}">
+                        ⚠️ Re-review
                     </span>
                 {% endif %}
             {% else %}
                 <span class="badge cluster-status-badge" style="background: #DCFCE7; color: #059669; font-weight: 700; border: none; padding: 5px 10px; border-radius: 6px;">Approved</span>
             {% endif %}
 
-            {# Delisted badge — показывается только если ни один member не активен #}
             {% if all_delisted %}
                 <span class="badge" style="background-color: #F3F4F6; color: #4B5563; font-weight: 700; border: none; padding: 5px 10px; border-radius: 6px;" title="All properties in this cluster are currently inactive on their source sites">
                     🪦 Delisted
@@ -97,24 +111,75 @@
             {% endif %}
         </div>
 
-        <!-- ПРАВАЯ ЧАСТЬ: Кнопки действий (Soft Hover) -->
+        <!-- ПРАВАЯ ЧАСТЬ: Single Manage button — opens cluster_manage_modal.
+             All per-cluster edit actions (approve/reject/dissolve/remove
+             member/merge selected) moved inside the modal. -->
         <div class="d-flex gap-2">
-            {% if cluster.status.value == 'APPROVED' or cluster.status == 'APPROVED' %}
-                <button class="btn-soft-danger fw-bold shadow-none" onclick="handleClusterVerdict('{{ cluster.id }}', 'reject', this)">
-                    Dissolve Group
-                </button>
-            {% else %}
-                <button class="btn-soft-success fw-bold shadow-none" onclick="handleClusterVerdict('{{ cluster.id }}', 'approve', this)">
-                    Approve
-                </button>
-                <button class="btn-soft-danger fw-bold shadow-none" onclick="handleClusterVerdict('{{ cluster.id }}', 'reject', this)">
-                    Reject
-                </button>
-            {% endif %}
+            <button class="btn btn-outline-dark btn-sm fw-bold shadow-none cluster-manage-btn"
+                    data-cluster-id="{{ cluster.id }}"
+                    onclick="openClusterManageModal('{{ cluster.id }}')"
+                    style="border-radius: 8px; padding: 6px 14px;">
+                ⚙ Manage
+            </button>
         </div>
     </div>
 
-    <!-- Таблица объектов -->
+    {# Sprint 7 Task B.3 — Creator/detector + date sub-header. #}
+    <div class="cluster-meta px-3 py-2 small d-flex flex-wrap align-items-center"
+         style="background: #fafafa; border-bottom: 1px solid #f3f4f6; color: #6B7280; gap: 8px 14px;">
+
+        {% set is_pending = (cluster.status == 'PENDING' or cluster.status.value == 'PENDING') %}
+
+        {% if is_pending %}
+            {% set is_reverted = cluster.notes and cluster.notes.startswith('Reverted to PENDING') %}
+            {% if is_reverted %}
+                <span title="{{ cluster.notes }}">
+                    ⚠️ <strong style="color: #B91C1C;">Re-review</strong>
+                    <span class="text-muted small ms-1">New member has been added in this cluster. Approve or dismiss.</span>
+                </span>
+            {% else %}
+                <span title="Created automatically by the duplicate detector">
+                    🔍 Detected by <strong class="text-dark">Engine {{ cluster.engine_version }}</strong>
+                </span>
+            {% endif %}
+            <span class="text-muted">·</span>
+            <span title="Detection time (Europe/Athens)">
+                {{ cluster.created_at | local_dt }}
+            </span>
+        {% else %}
+            {% set is_manual_merge = cluster.notes and cluster.notes.startswith('Manual merge') %}
+            {% set has_verdict_record = cluster.verdict_locked_at is not none %}
+            {% set when = cluster.verdict_locked_at or cluster.created_at %}
+
+            {% if is_manual_merge %}
+                {% set agent_name = cluster.verdict_locked_by_agent.name if cluster.verdict_locked_by_agent else '[deleted user]' %}
+                <span title="Manually created from selected properties on Properties or Single page">
+                    ✋ Created by <strong class="text-dark">{{ agent_name }}</strong>
+                </span>
+            {% elif has_verdict_record %}
+                {% set agent_name = cluster.verdict_locked_by_agent.name if cluster.verdict_locked_by_agent else '[deleted user]' %}
+                <span title="Detected by Engine {{ cluster.engine_version }}, approved by {{ agent_name }}">
+                    ✅ Approved by <strong class="text-dark">{{ agent_name }}</strong>
+                    <span class="text-muted small ms-1">(detected by Engine {{ cluster.engine_version }})</span>
+                </span>
+            {% else %}
+                <span title="Detected by Engine {{ cluster.engine_version }} and approved before per-reviewer tracking was added">
+                    ✅ Approved
+                    <span class="text-muted small ms-1">(detected by Engine {{ cluster.engine_version }}, legacy)</span>
+                </span>
+            {% endif %}
+
+            <span class="text-muted">·</span>
+            <span title="Approval / creation time (Europe/Athens)">
+                {{ when | local_dt }}
+            </span>
+        {% endif %}
+    </div>
+
+    {# Members table — VIEW-ONLY now. No checkboxes, no trash. All
+       member-edit actions moved to manage modal. The data-* attributes
+       on each <tr> are read by openClusterManageModal() to populate
+       the modal without an extra fetch round-trip. #}
     <div class="table-responsive">
         <table class="table table-borderless mb-0 table-custom" style="table-layout: fixed; width: 100%;">
             <thead style="background:#fdfdfd; border-bottom: 1px solid #f3f4f6;">
@@ -125,12 +190,21 @@
                     <th style="width: 17%;">Type</th>
                     <th style="width: 10%;">Size</th>
                     <th style="width: 14%;">Price</th>
-                    <th style="width: 45px;"></th>
                 </tr>
             </thead>
             <tbody>
                 {% for prop in members %}
-                <tr class="clickable-row {% if not prop.is_active %}text-muted{% endif %}" onclick="window.open('/property/{{ prop.id }}', '_blank')">
+                <tr class="clickable-row {% if not prop.is_active %}text-muted{% endif %}"
+                    data-property-id="{{ prop.id }}"
+                    data-source-domain="{{ prop.source_domain }}"
+                    data-site-id="{{ prop.site_property_id }}"
+                    data-price="{{ prop.price or 0 }}"
+                    data-size="{{ prop.size_sqm or '' }}"
+                    data-category="{{ prop.category or '' }}"
+                    data-area="{{ prop.calc_municipality or prop.area or '' }}"
+                    data-is-active="{{ 'true' if prop.is_active else 'false' }}"
+                    data-thumb="{% if prop.media %}{{ prop.media[0].local_file_path | fix_path }}{% endif %}"
+                    onclick="window.open('/property/{{ prop.id }}', '_blank')">
                     <td style="padding-left:20px;">
                         {% if prop.media %}
                             <img src="/{{ prop.media[0].local_file_path | fix_path }}" class="admin-thumb" alt="thumb" style="border-radius: 4px; border: 1px solid #eee; {% if not prop.is_active %}opacity: 0.5;{% endif %}">
@@ -149,18 +223,6 @@
                     <td class="text-truncate text-muted fw-medium">{{ prop.category or '—' }}</td>
                     <td class="text-nowrap text-muted fw-medium">{% if prop.size_sqm %}{{ prop.size_sqm|int }} m²{% else %}—{% endif %}</td>
                     <td class="fw-bold text-dark text-nowrap">{{ prop.price | euro }}</td>
-
-                    <td class="text-end pe-3">
-                        {# Trash icon now shown for BOTH pending and approved clusters.
-                           The backend endpoint already handles either status correctly,
-                           so admin can surgically remove a misclassified property even
-                           after the cluster was approved. #}
-                        <button type="button" class="btn btn-sm shadow-none p-1 text-muted" style="border: none; background: transparent;" title="Remove from cluster" onclick="removeProp('{{ cluster.id }}', '{{ prop.id }}', this, event)">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition: stroke 0.2s;" onmouseover="this.style.stroke='#ff385c'" onmouseout="this.style.stroke='currentColor'">
-                                <polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                            </svg>
-                        </button>
-                    </td>
                 </tr>
                 {% endfor %}
             </tbody>

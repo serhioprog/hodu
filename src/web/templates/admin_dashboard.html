@@ -43,16 +43,145 @@
         .dropdown-menu-custom .dropdown-item:hover { background-color: #f7f7f7; }
         .dropdown-divider { margin: 8px 0; border-color: #ebebeb; }
 
+        /* ===================================================================
+           Tab navigation — three-tier nested menus.
+           L1: main admin tabs (Properties/Duplicates/Users/System) — 14px,
+               LIVES IN HEADER NAVBAR (between logo + hamburger).
+               Red TEXT only on active. No underline.
+           L2: engine selector (Engine 1 / Engine 2)                 — 13px,
+               red text + soft pink OUTLINE border on active. No fill.
+           L3: cluster sub-tabs + Settings sub-tabs                  — 12px,
+               soft pink PILL FILL on active.
+           L2 border + L3 fill use the same color (#fff0f2) for coherence.
+           =================================================================== */
+
+        /* Default fallback for any .nav-tabs not handled by IDs below. */
         .nav-tabs .nav-link { color: #555; font-weight: 600; border: none; border-bottom: 3px solid transparent; margin-bottom: -1px; }
         .nav-tabs .nav-link.active { color: #ff385c; background: none; border-color: #ff385c; }
         .nav-tabs .nav-link:hover { border-color: #ff385c; color: #ff385c; }
+
+        /* === L1: main admin tabs — moved into navbar header, sits between
+              logo and hamburger menu. Red TEXT only on active, no underline.
+              16px font, generous 24px gap between items for breathing room. === */
+        #adminTabs.nav-tabs {
+            justify-content: center;
+            margin-bottom: 0 !important;
+            border-bottom: none;
+            gap: 24px;
+        }
+        #adminTabs .nav-link {
+            font-size: 16px;
+            padding: 8px 16px;
+            border-bottom: none !important;
+        }
+        #adminTabs .nav-link.active {
+            color: #ff385c;
+            border-color: transparent !important;
+        }
+
+        /* === L2: engine selector + Services sub-tabs + Properties source
+              filter — segmented toggle. Single bordered container wraps
+              the buttons. Active button has soft pink fill. === */
+        #engineTabs.nav-pills,
+        #settingsSubTabs.nav-tabs,
+        .property-tabs.nav-pills {
+            width: fit-content;
+            margin: 0 auto 8px !important;
+            border: 1px solid #fff0f2;
+            border-radius: 8px;
+            padding: 2px;
+            gap: 0;
+        }
+        #settingsSubTabs.nav-tabs { border-bottom: 1px solid #fff0f2; }
+        #engineTabs .nav-link,
+        #settingsSubTabs .nav-link,
+        .property-tabs .nav-link {
+            color: #555;
+            font-weight: 600;
+            font-size: 13px;
+            background: transparent !important;
+            border: none !important;
+            border-radius: 6px;
+            padding: 4px 16px;
+        }
+        #engineTabs .nav-link.active,
+        #settingsSubTabs .nav-link.active,
+        .property-tabs .nav-link.active {
+            color: #ff385c !important;
+            background: #fff0f2 !important;
+        }
+        #engineTabs .nav-link:hover,
+        #settingsSubTabs .nav-link:hover,
+        .property-tabs .nav-link:hover {
+            color: #ff385c;
+            background: #fff0f2 !important;
+        }
+        /* Dropdown menu shown by the Source button — match toggle aesthetic */
+        .property-source-menu {
+            font-size: 13px;
+            border: 1px solid #fff0f2;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+        }
+        .property-source-menu .dropdown-item:hover {
+            background-color: #fff0f2;
+            color: #ff385c;
+        }
+
+        /* === L3: cluster sub-tabs — 12px, centered, OUTLINE only on
+              active (no fill, just soft pink border). === */
+        #clusterSubTabs-1.nav-tabs,
+        #clusterSubTabs-2.nav-tabs {
+            border-bottom: none;
+            margin-bottom: 12px !important;
+            gap: 8px;
+        }
+
+        #clusterSubTabs-1 .nav-item,
+        #clusterSubTabs-2 .nav-item {
+            flex: 1;
+        }
+        
+        #clusterSubTabs-1 .nav-link,
+        #clusterSubTabs-2 .nav-link {
+            color: #555;
+            font-size: 12px;
+            padding: 6px 14px;
+            border: 1px solid transparent !important;
+            border-radius: 6px;
+            width: 100%;
+            text-align: center;
+            transition: border-color 0.2s ease;
+        }
+        #clusterSubTabs-1 .nav-link.active,
+        #clusterSubTabs-2 .nav-link.active {
+            color: #ff385c;
+            border: 1px solid #fff0f2 !important;
+            background: transparent;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+        }
+        #clusterSubTabs-1 .nav-link:hover,
+        #clusterSubTabs-2 .nav-link:hover {
+            color: #ff385c;
+            border-color: #fff0f2 !important;
+            background: transparent;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+        }
+        
 
         .table-custom { font-size: 14px; vertical-align: middle; border-collapse: separate; border-spacing: 0; width: 100%; }
         .table-custom th { text-transform: uppercase; font-size: 12px; color: #888; border-bottom: 2px solid #eee !important; padding-bottom: 10px; }
         .table-custom td { border-bottom: 1px solid #eee; padding: 12px 8px; }
 
+        /* Hover gray — single coherent soft-warm color across the site.
+           Applied to clickable rows (custom) AND Bootstrap's .table-hover
+           (Users table) so Users / Properties / Duplicates all match. */
         .clickable-row { cursor: pointer; }
-        .clickable-row:hover td { background-color: #e2e6ea !important; }
+        .clickable-row:hover td,
+        .table-hover > tbody > tr:hover > * {
+            background-color: #f5f5f5 !important;
+            --bs-table-hover-bg: #f5f5f5;
+        }
 
         .admin-thumb { width: 60px; height: 45px; object-fit: cover; border-radius: 6px; background-color: #e9ecef; }
         .admin-thumb-empty { width: 60px; height: 45px; border-radius: 6px; background-color: #e9ecef; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #adb5bd; }
@@ -180,10 +309,93 @@
         .badge-sys-running { background: #DBEAFE; color: #0284c7; font-weight: 700; border: none; padding: 5px 10px; border-radius: 6px; }
         .badge-sys-neutral { background: #F3F4F6; color: #4B5563; font-weight: 700; border: none; padding: 5px 10px; border-radius: 6px; }
         /* Бейджи в Scrapers / Email ----------------------------------------------------------------------- */
-    
+        /* === User Role Tabs (Add/Manage User modal) =================
+           Same segmented-toggle pattern as #engineTabs/#settingsSubTabs/
+           #propertyTabs — single rounded outer container with active pill
+           inside. Used in the User Modal for selecting Agent/Reviewer/
+           Administrator on create or edit.                              */
+        .user-role-tabs {
+            border: 1px solid #fff0f2;
+            border-radius: 8px;
+            padding: 2px;
+            margin: 0;
+            gap: 0;
+            width: 100%;
+            list-style: none;
+            display: flex;
+        }
+        .user-role-tabs .nav-item {
+            flex: 1;
+        }
+        .user-role-tabs .nav-link {
+            color: #555;
+            font-weight: 600;
+            font-size: 14px;
+            background: transparent !important;
+            border: none !important;
+            border-radius: 6px;
+            padding: 8px 16px;
+            width: 100%;
+            text-align: center;
+            cursor: pointer;
+        }
+        .user-role-tabs .nav-link.active {
+            color: #ff385c !important;
+            background: #fff0f2 !important;
+        }
+        .user-role-tabs .nav-link:hover {
+            color: #ff385c;
+            background: #fff0f2 !important;
+        }
+
+        /* === Cluster badges (Sprint 7 Task B) ===========================
+        Используются в Properties table колонка "Duplicates" и в любом
+        другом месте где нужно показать что property в кластере. Клик —
+        navigate to cluster card в Duplicates tab (см. focusCluster JS). */
+        .cluster-badge {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 6px;
+            text-decoration: none;
+            border: 1px solid transparent;
+            transition: all 0.15s ease;
+            margin-right: 4px;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+        .cluster-badge-e1 {
+            background: #fff0f2;
+            color: #ff385c;
+        }
+        .cluster-badge-e1:hover {
+            background: #ffe0e6;
+            color: #ff385c;
+            text-decoration: none;
+        }
+        .cluster-badge-e2 {
+            background: #f3e8ff;
+            color: #6b21a8;
+        }
+        .cluster-badge-e2:hover {
+            background: #e9d5ff;
+            color: #581c87;
+            text-decoration: none;
+        }
+        .cluster-badge .cluster-badge-status {
+            opacity: 0.6;
+            margin-left: 4px;
+        }
     </style>
 </head>
 <body>
+
+{# Sprint 7 Task B/C: expose admin status to JS so cluster badges and
+   future Engine-2-restricted UI can react to role without re-fetching. #}
+<script>
+window.IS_ADMIN = {{ current_user.is_admin | tojson }};
+</script>
 
 {# CHROME-DUPLICATION-NOTE: logo header + hamburger + main nav tabs below are
    duplicated in src/web/templates/admin_dissolved.html. If you edit them
@@ -195,13 +407,53 @@
             <img src="/static/hodu_logo.png" alt="hodu.">
         </a>
 
+        {# Sprint 7 UI iteration 3: main admin tabs moved INTO header.
+           Sits between logo (left) and hamburger (right). Tab-content
+           target IDs (#tab-properties etc.) are unchanged so Bootstrap
+           tab toggle still works. #}
+        <ul class="nav nav-tabs" id="adminTabs" role="tablist">
+            {% if current_user.is_admin %}
+            <li class="nav-item">
+                <button class="nav-link d-flex align-items-center" data-bs-toggle="tab" data-bs-target="#tab-settings" type="button">
+                    <svg class="me-2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    Services
+                </button>
+            </li>
+            {% endif %}
+            <li class="nav-item">
+                <button class="nav-link active d-flex align-items-center" data-bs-toggle="tab" data-bs-target="#tab-properties" type="button">
+                    <svg class="me-2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                    Properties
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link d-flex align-items-center" data-bs-toggle="tab" data-bs-target="#tab-clusters" type="button">
+                    <svg class="me-2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    Duplicates
+                    <span style="position: relative; display: inline-block;">
+                        {% if pending_clusters_v1|length > 0 or pending_clusters_v2|length > 0 or pending_proposals_v1|length > 0 %}
+                            <span class="position-absolute bg-danger rounded-circle" style="width: 6px; height: 6px; top: -2px; right: -8px; animation: pulse 2s infinite;"></span>
+                        {% endif %}
+                    </span>
+                </button>
+            </li>
+            {% if current_user.is_admin %}
+            <li class="nav-item">
+                <button class="nav-link d-flex align-items-center" data-bs-toggle="tab" data-bs-target="#tab-users" type="button">
+                    <svg class="me-2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    Users
+                </button>
+            </li>
+            {% endif %}
+        </ul>
+
         <div class="dropdown">
             <button class="menu-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
             <ul class="dropdown-menu dropdown-menu-end dropdown-menu-custom">
-                <li><a class="dropdown-item" href="/daily-report">Dashboard</a></li>
-                <li><a class="dropdown-item" href="/admin">Control Panel</a></li>
+                <li><a class="dropdown-item" href="/daily-report">Daily Report</a></li>
+                <li><a class="dropdown-item" href="/admin">Refresh page</a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li>
                     <form action="/logout" method="post" class="m-0">
@@ -216,165 +468,14 @@
 
 <div class="container">
     <div class="main-card">
-        <ul class="nav nav-tabs mb-4" id="adminTabs" role="tablist">
-            <li class="nav-item">
-                <button class="nav-link active d-flex align-items-center" data-bs-toggle="tab" data-bs-target="#tab-properties" type="button">
-                    <svg class="me-2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-                    Properties
-                </button>
-            </li>
-            <li class="nav-item">
-                <button class="nav-link d-flex align-items-center" data-bs-toggle="tab" data-bs-target="#tab-clusters" type="button">
-                    <svg class="me-2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                    Duplicates
-                    <span style="position: relative; display: inline-block;">
-                        {% if pending_clusters_v1|length > 0 or pending_clusters_v2|length > 0 %}
-                            <span class="position-absolute bg-danger rounded-circle" style="width: 6px; height: 6px; top: -2px; right: -8px; animation: pulse 2s infinite;"></span>
-                        {% endif %}
-                    </span>
-                </button>
-            </li>
-            <li class="nav-item">
-                <button class="nav-link d-flex align-items-center" data-bs-toggle="tab" data-bs-target="#tab-users" type="button">
-                    <svg class="me-2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                    Users
-                </button>
-            </li>
-            <li class="nav-item">
-                <button class="nav-link d-flex align-items-center" data-bs-toggle="tab" data-bs-target="#tab-settings" type="button">
-                    <svg class="me-2" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                    System
-                </button>
-            </li>
-        </ul>
-
         <div class="tab-content" id="adminTabsContent">
 
             <!-- ==================== PROPERTIES ==================== -->
             <div class="tab-pane fade show active" id="tab-properties">
-                <div class="filter-panel">
-                    <div class="row align-items-end g-2">
-                        <div class="col-auto mb-3">
-                            <label class="filter-label">Show</label>
-                            <select id="customLength" class="form-select form-select-sm" style="width: 70px;">
-                                <option value="10">10</option>
-                                <option value="25" selected>25</option>
-                                <option value="50">50</option>
-                                <option value="100">100</option>
-                            </select>
-                        </div>
-                        
-                        <div class="col mb-3">
-                            <label class="filter-label">Source</label>
-                            <select id="filterSource" class="form-select form-select-sm"><option value="">All sites</option></select>
-                        </div>
-                        
-                        <div class="col mb-3">
-                            <label class="filter-label">Search</label>
-                            <input type="text" id="customSearch" class="form-control form-control-sm" placeholder="Search...">
-                        </div>
-                        
-                        <div class="col mb-3">
-                            <label class="filter-label">Area</label>
-                            <select id="filterArea" class="form-select form-select-sm"><option value="">All areas</option></select>
-                        </div>
-                        
-                        <div class="col mb-3">
-                            <label class="filter-label">Type</label>
-                            <select id="filterType" class="form-select form-select-sm"><option value="">All types</option></select>
-                        </div>
-                        
-                        <div class="col-auto mb-3">
-                            <label class="filter-label">Price (€)</label>
-                            <div class="input-group input-group-sm" style="width: 190px;">
-                                <input type="number" id="filterPriceMin" class="form-control" placeholder="Min" min="0">
-                                <span class="input-group-text price-dash" style="padding: 0 4px;">-</span>
-                                <input type="number" id="filterPriceMax" class="form-control" placeholder="Max" min="0">
-                            </div>
-                        </div>
-                        
-                        <div class="col-auto mb-3">
-                            <label class="filter-label">Status</label>
-                            <select id="filterStatus" class="form-select form-select-sm" style="width: 110px;">
-                                <option value="">All</option>
-                                <option value="NEW">New</option>
-                                <option value="PRICE DROP">Price drop</option>
-                                <option value="ACTIVE">Active</option>
-                                <option value="DELISTED">Delisted</option>
-                                <option value="SOLD">Sold</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="table-responsive">
-                    <table class="table table-custom" id="propertiesTable">
-                        <thead>
-                            <tr>
-                                <th style="width: 40px;"></th>
-                                <th style="width: 60px;">Photo</th>
-                                <th>HODU ID</th>
-                                <th>Site ID</th>
-                                <th>Source</th>
-                                <th>Area</th>
-                                <th>Type</th>
-                                <th>Size</th>
-                                <th>Price</th>
-                                <th>Status</th>
-                                <th>Last Checked</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for prop in properties %}
-                            <tr class="clickable-row" onclick="window.open('/property/{{ prop.id }}', '_blank')">
-                                <td style="vertical-align: middle; text-align: center;">
-                                    {% if prop.is_active %}
-                                        <input type="checkbox"
-                                               class="property-merge-check"
-                                               data-property-id="{{ prop.id }}"
-                                               data-cluster-id="{{ prop.cluster_id or '' }}"
-                                               style="width: 16px; height: 16px; cursor: pointer;"
-                                               onclick="event.stopPropagation(); updateBars();">
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if prop.media %}
-                                        <img src="/{{ prop.media[0].local_file_path | fix_path }}" class="admin-thumb" alt="thumb">
-                                    {% else %}
-                                        <div class="admin-thumb-empty">N/A</div>
-                                    {% endif %}
-                                </td>
-                                <td class="text-muted fw-bold">{{ (prop.id | string)[:6] | upper }}</td>
-                                <td class="fw-bold">{{ prop.site_property_id }}</td>
-                                <td>{{ prop.source_domain }}</td>
-                                <td>{{ prop.calc_municipality or prop.area or '—' }}</td>
-                                <td>{{ prop.category or '—' }}</td>
-                                <td>{% if prop.size_sqm %}{{ prop.size_sqm|int }} m²{% else %}—{% endif %}</td>
-                                <td class="fw-bold text-nowrap" data-sort="{{ prop.price or 0 }}">{{ prop.price | euro }}</td>
-                                <td>
-                                    {% set st = prop.status.value if prop.status.value is defined else prop.status %}
-                                    {# Bug #67: explicit SOLD branch — previously fell through to ACTIVE.
-                                       Note: "PRICE DROP" is UX language for PRICE_CHANGED enum value. #}
-                                    {% if st == 'NEW' %}
-                                        <span class="badge badge-new">NEW</span>
-                                    {% elif st == 'PRICE_CHANGED' %}
-                                        <span class="badge badge-price">PRICE DROP</span>
-                                    {% elif st == 'SOLD' %}
-                                        <span class="badge badge-delisted">SOLD</span>
-                                    {% elif not prop.is_active or st == 'DELISTED' %}
-                                        <span class="badge badge-delisted">DELISTED</span>
-                                    {% else %}
-                                        <span class="badge badge-active">ACTIVE</span>
-                                    {% endif %}
-                                </td>
-                                <td class="small text-muted fw-medium text-nowrap">
-                                    {{ prop.last_checked_at.strftime('%d.%m.%Y %H:%M') if prop.last_checked_at else '—' }}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+                {% set scope = 'main' %}
+                {% set cluster_filter = 'any' %}
+                {% set show_source_toggle = True %}
+                {% include 'partials/properties_table.html' %}
             </div>
 
             <!-- ==================== DUPLICATES AI ==================== -->
@@ -389,16 +490,22 @@
                 <ul class="nav nav-pills mb-3" id="engineTabs" role="tablist">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active" id="engine1-tab" data-bs-toggle="pill" data-bs-target="#engine1-pane" type="button" role="tab">
-                            Engine 1 <span class="text-muted small">(legacy)</span>
-                            <sup class="ms-1" style="color: #ff385c; font-weight: 500; font-size: 0.75em;">{{ pending_clusters_v1|length }}</sup>
+                            Engine 1
+                            {% if pending_clusters_v1|length > 0 or pending_proposals_v1|length > 0 %}
+                                <span class="bg-danger rounded-circle d-inline-block ms-1" style="width: 6px; height: 6px; vertical-align: middle; animation: pulse 2s infinite;"></span>
+                            {% endif %}
                         </button>
                     </li>
+                    {% if current_user.is_admin %}
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="engine2-tab" data-bs-toggle="pill" data-bs-target="#engine2-pane" type="button" role="tab">
-                            Engine 2 <span class="text-muted small">(HybridEngine)</span>
-                            <sup class="ms-1" style="color: #ff385c; font-weight: 500; font-size: 0.75em;">{{ pending_clusters_v2|length }}</sup>
+                            Engine 2
+                            {% if pending_clusters_v2|length > 0 %}
+                                <span class="bg-danger rounded-circle d-inline-block ms-1" style="width: 6px; height: 6px; vertical-align: middle; animation: pulse 2s infinite;"></span>
+                            {% endif %}
                         </button>
                     </li>
+                    {% endif %}
                 </ul>
 
                 <div class="tab-content" id="engineTabContent">
@@ -408,13 +515,18 @@
 
                         <ul class="nav nav-tabs mb-4" id="clusterSubTabs-1" role="tablist">
                             <li class="nav-item" role="presentation">
-                                <button class="nav-link active" id="pills-pending-1-tab" data-bs-toggle="tab" data-bs-target="#pills-pending-1" type="button" role="tab">
-                                    Pending review<sup class="ms-1" style="color: #ff385c; font-weight: 500; font-size: 0.75em;">{{ pending_clusters_v1|length }}</sup>
+                                <button class="nav-link active" id="pills-single-1-tab" data-bs-toggle="tab" data-bs-target="#pills-single-1" type="button" role="tab">
+                                    Single<sup class="ms-1" style="color: #888; font-weight: 400; font-size: 0.75em;">{{ total_single_e1 }}</sup>
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="pills-pending-1-tab" data-bs-toggle="tab" data-bs-target="#pills-pending-1" type="button" role="tab">
+                                    Pending review<sup class="ms-1" style="color: #ff385c; font-weight: 500; font-size: 0.75em;">{{ pending_clusters_v1|length + pending_proposals_v1|length }}</sup>
                                 </button>
                             </li>
                             <li class="nav-item" role="presentation">
                                 <button class="nav-link" id="pills-approved-1-tab" data-bs-toggle="tab" data-bs-target="#pills-approved-1" type="button" role="tab">
-                                    Approved<sup class="ms-1" style="color: #888; font-weight: 400; font-size: 0.75em;">{{ approved_clusters_v1|length }}</sup>
+                                    Approved<sup class="ms-1" style="color: #888; font-weight: 400; font-size: 0.75em;">{{ total_approved_v1 }}</sup>
                                 </button>
                             </li>
                             <li class="nav-item" role="presentation">
@@ -426,22 +538,67 @@
 
                         <div class="tab-content" id="engine1-tabContent">
 
-                            <!-- Engine 1: PENDING -->
-                            <div class="tab-pane fade show active" id="pills-pending-1" role="tabpanel">
-                                <div id="pending-clusters-container-1">
-                                    {% if pending_clusters_v1 %}
-                                        {% for cluster in pending_clusters_v1 %}
-                                            {% include 'partials/cluster_card.html' %}
-                                        {% endfor %}
-                                    {% else %}
-                                        <div class="text-center py-5 text-muted empty-state">
-                                            <h5>No pending duplicates (Engine 1)</h5>
-                                            <p>The legacy engine hasn't flagged anything for review yet.</p>
-                                        </div>
-                                    {% endif %}
-                                </div>
+                            <!-- Engine 1: SINGLE (properties not in any cluster) -->
+                            <div class="tab-pane fade show active" id="pills-single-1" role="tabpanel">
+                                <p class="text-muted small mb-4">
+                                    Properties not currently in any <strong>Engine 1</strong> cluster.
+                                    These either never matched a duplicate, or were removed when an admin
+                                    rejected/dissolved their cluster. The matcher will re-evaluate them
+                                    on the next daily sync.
+                                </p>
+                                {% set scope = 'singleE1' %}
+                                {% set cluster_filter = 'single_e1' %}
+                                {% set show_source_toggle = False %}
+                                {% include 'partials/properties_table.html' %}
                             </div>
 
+                            <!-- Engine 1: PENDING (clusters + member proposals) -->
+                            <!-- Sprint 8 V1-AdminAuthority: two-section layout.
+                                 - Pending Clusters: fresh duplicates needing admin verdict.
+                                 - Member Proposals: APPROVED clusters that engine wants to grow. -->
+                            <div class="tab-pane fade" id="pills-pending-1" role="tabpanel">
+
+                                {% set has_pending = pending_clusters_v1|length > 0 %}
+                                {% set has_proposals = pending_proposals_v1|length > 0 %}
+
+                                {% if has_pending and has_proposals %}
+                                <h6 class="fw-bold text-muted mb-3 text-uppercase" style="font-size: 11px; letter-spacing: 0.6px;">
+                                    Pending Clusters · {{ pending_clusters_v1|length }}
+                                </h6>
+                                {% endif %}
+
+                                <div id="pending-clusters-container-1">
+                                    {% for cluster in pending_clusters_v1 %}
+                                        {% include 'partials/cluster_card.html' %}
+                                    {% endfor %}
+                                </div>
+
+                                {% if has_proposals %}
+                                    {% if has_pending %}
+                                    <hr class="my-4" style="border-color: #f3f4f6;">
+                                    {% endif %}
+                                    <h6 class="fw-bold text-muted mb-3 text-uppercase" style="font-size: 11px; letter-spacing: 0.6px;">
+                                        🆕 Member Proposals · {{ pending_proposals_v1|length }}
+                                        <span class="text-muted fw-normal text-lowercase ms-2" style="font-size: 12px; letter-spacing: 0;">
+                                            — engine detected new candidates for approved clusters
+                                        </span>
+                                    </h6>
+                                    <div id="pending-proposals-container-1">
+                                        {% for proposal in pending_proposals_v1 %}
+                                            {% include 'partials/proposal_card.html' %}
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+
+                                {% if not has_pending and not has_proposals %}
+                                    <div class="text-center py-5 text-muted empty-state">
+                                        <h5>No pending review (Engine 1)</h5>
+                                        <p>The engine hasn't flagged anything for review yet.</p>
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            <!-- Engine 1: APPROVED -->
                             <!-- Engine 1: APPROVED -->
                             <div class="tab-pane fade" id="pills-approved-1" role="tabpanel">
                                 <div id="approved-clusters-container-1">
@@ -456,6 +613,30 @@
                                         </div>
                                     {% endif %}
                                 </div>
+
+                                {# Pagination — only show когда есть multiple pages #}
+                                {% if total_approved_v1 > approved_page_size %}
+                                    {% set total_pages_v1 = (total_approved_v1 + approved_page_size - 1) // approved_page_size %}
+                                    <nav class="mt-3" aria-label="Approved Engine 1 pagination">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <small class="text-muted">
+                                                Page {{ approved_v1_page + 1 }} of {{ total_pages_v1 }} ({{ total_approved_v1 }} approved)
+                                            </small>
+                                            <div>
+                                                {% if approved_v1_page > 0 %}
+                                                    <a href="?approved_v1_page={{ approved_v1_page - 1 }}" class="btn btn-sm btn-outline-secondary">← Previous</a>
+                                                {% else %}
+                                                    <button class="btn btn-sm btn-outline-secondary" disabled>← Previous</button>
+                                                {% endif %}
+                                                {% if approved_v1_page + 1 < total_pages_v1 %}
+                                                    <a href="?approved_v1_page={{ approved_v1_page + 1 }}" class="btn btn-sm btn-outline-secondary">Next →</a>
+                                                {% else %}
+                                                    <button class="btn btn-sm btn-outline-secondary" disabled>Next →</button>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </nav>
+                                {% endif %}
                             </div>
 
                             <!-- Engine 1: DISSOLVED -->
@@ -498,19 +679,25 @@
 
                         </div>
                     </div>
-
+                    
+                    {% if current_user.is_admin %}
                     <!-- ============ ENGINE 2 PANE ============ -->
                     <div class="tab-pane fade" id="engine2-pane" role="tabpanel">
 
                         <ul class="nav nav-tabs mb-4" id="clusterSubTabs-2" role="tablist">
                             <li class="nav-item" role="presentation">
-                                <button class="nav-link active" id="pills-pending-2-tab" data-bs-toggle="tab" data-bs-target="#pills-pending-2" type="button" role="tab">
+                                <button class="nav-link active" id="pills-single-2-tab" data-bs-toggle="tab" data-bs-target="#pills-single-2" type="button" role="tab">
+                                    Single<sup class="ms-1" style="color: #888; font-weight: 400; font-size: 0.75em;">{{ total_single_e2 }}</sup>
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="pills-pending-2-tab" data-bs-toggle="tab" data-bs-target="#pills-pending-2" type="button" role="tab">
                                     Pending review<sup class="ms-1" style="color: #ff385c; font-weight: 500; font-size: 0.75em;">{{ pending_clusters_v2|length }}</sup>
                                 </button>
                             </li>
                             <li class="nav-item" role="presentation">
                                 <button class="nav-link" id="pills-approved-2-tab" data-bs-toggle="tab" data-bs-target="#pills-approved-2" type="button" role="tab">
-                                    Approved<sup class="ms-1" style="color: #888; font-weight: 400; font-size: 0.75em;">{{ approved_clusters_v2|length }}</sup>
+                                    Approved<sup class="ms-1" style="color: #888; font-weight: 400; font-size: 0.75em;">{{ total_approved_v2 }}</sup>
                                 </button>
                             </li>
                             <li class="nav-item" role="presentation">
@@ -522,8 +709,22 @@
 
                         <div class="tab-content" id="engine2-tabContent">
 
+                            <!-- Engine 2: SINGLE (properties not in any HybridEngine cluster) -->
+                            <div class="tab-pane fade show active" id="pills-single-2" role="tabpanel">
+                                <p class="text-muted small mb-4">
+                                    Properties not currently in any <strong>Engine 2 (HybridEngine)</strong> cluster.
+                                    These are unmatched by the cross-source matcher — either truly unique or
+                                    waiting for a new daily sync to re-evaluate. Engine 2 uses a separate
+                                    membership table (cluster_v2_members) independent of Engine 1.
+                                </p>
+                                {% set scope = 'singleE2' %}
+                                {% set cluster_filter = 'single_e2' %}
+                                {% set show_source_toggle = False %}
+                                {% include 'partials/properties_table.html' %}
+                            </div>
+
                             <!-- Engine 2: PENDING -->
-                            <div class="tab-pane fade show active" id="pills-pending-2" role="tabpanel">
+                            <div class="tab-pane fade" id="pills-pending-2" role="tabpanel">
                                 <div id="pending-clusters-container-2">
                                     {% if pending_clusters_v2 %}
                                         {% for cluster in pending_clusters_v2 %}
@@ -539,6 +740,7 @@
                             </div>
 
                             <!-- Engine 2: APPROVED -->
+                            <!-- Engine 2: APPROVED -->
                             <div class="tab-pane fade" id="pills-approved-2" role="tabpanel">
                                 <div id="approved-clusters-container-2">
                                     {% if approved_clusters_v2 %}
@@ -552,6 +754,30 @@
                                         </div>
                                     {% endif %}
                                 </div>
+
+                                {# Pagination #}
+                                {% if total_approved_v2 > approved_page_size %}
+                                    {% set total_pages_v2 = (total_approved_v2 + approved_page_size - 1) // approved_page_size %}
+                                    <nav class="mt-3" aria-label="Approved Engine 2 pagination">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <small class="text-muted">
+                                                Page {{ approved_v2_page + 1 }} of {{ total_pages_v2 }} ({{ total_approved_v2 }} approved)
+                                            </small>
+                                            <div>
+                                                {% if approved_v2_page > 0 %}
+                                                    <a href="?approved_v2_page={{ approved_v2_page - 1 }}" class="btn btn-sm btn-outline-secondary">← Previous</a>
+                                                {% else %}
+                                                    <button class="btn btn-sm btn-outline-secondary" disabled>← Previous</button>
+                                                {% endif %}
+                                                {% if approved_v2_page + 1 < total_pages_v2 %}
+                                                    <a href="?approved_v2_page={{ approved_v2_page + 1 }}" class="btn btn-sm btn-outline-secondary">Next →</a>
+                                                {% else %}
+                                                    <button class="btn btn-sm btn-outline-secondary" disabled>Next →</button>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </nav>
+                                {% endif %}
                             </div>
 
                             <!-- Engine 2: DISSOLVED -->
@@ -578,15 +804,16 @@
 
                         </div>
                     </div>
-
+                    {% endif %}  {# end of Engine 2 admin-only block #}
                 </div>
             </div>
 
+            {% if current_user.is_admin %}
             <!-- ==================== USERS ==================== -->
             <div class="tab-pane fade" id="tab-users">
                 <div class="d-flex justify-content-between align-items-center mb-4">
                     <h5 class="mb-0">Agents & Users</h5>
-                    <button class="btn btn-dark btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#addAgentModal">+ Add New Agent</button>
+                    <button class="btn btn-dark btn-sm fw-bold" onclick="openAddUserModal()">+ Add New User</button>
                 </div>
                 <table class="table table-hover table-custom">
                     <thead>
@@ -611,15 +838,19 @@
                                     <span class="badge badge-price">Blocked</span>
                                 {% endif %}
                             </td>
-                            <td>{% if user.is_admin %}Administrator{% else %}Agent{% endif %}</td>
+                            <td>
+                                {% if user.is_admin %}Administrator
+                                {% elif user.is_reviewer %}Reviewer
+                                {% else %}Agent
+                                {% endif %}
+                            </td>
                             <td class="text-end">
                                 {% if user.id != current_user.id %}
-                                <form action="/admin/users/{{ user.id }}/toggle" method="post">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                    <button class="btn btn-sm btn-outline-dark fw-bold">
-                                        {{ "Block" if user.is_active else "Unblock" }}
-                                    </button>
-                                </form>
+                                {% set role_str = 'admin' if user.is_admin else 'reviewer' if user.is_reviewer else 'agent' %}
+                                <button class="btn btn-sm btn-outline-dark fw-bold"
+                                        onclick='openManageUserModal({{ user.id | string | tojson }}, {{ user.name | tojson }}, {{ user.email | tojson }}, "{{ role_str }}", {{ "true" if user.is_active else "false" }})'>
+                                    Manage
+                                </button>
                                 {% endif %}
                             </td>
                         </tr>
@@ -675,7 +906,7 @@
                     <div class="tab-pane fade" id="pills-scraper" role="tabpanel">
                         
                         <!-- Новый нежно-розовый баннер -->
-                        <div class="filter-panel p-4 mb-4" style="background-color: #fff0f2; border: 1px solid #ffe6ea; border-radius: 12px;">
+                        <div class="filter-panel p-4 mb-4">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <h6 class="fw-bold mb-1 text-dark">Manual Action: "Clarity in every grain"</h6>
@@ -737,7 +968,7 @@
 
                     <!-- Вкладка EMAIL -->
                     <div class="tab-pane fade" id="pills-email" role="tabpanel">
-                        <div class="filter-panel p-4 mb-4" style="background-color: #fff0f2; border: 1px solid #ffe6ea; border-radius: 12px;">
+                        <div class="filter-panel p-4 mb-4">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <h6 class="fw-bold mb-1 text-dark">Manual Action: "Found, not sought"</h6>
@@ -792,43 +1023,89 @@
 
                 </div>
             </div>
+            {% endif %}
 
         </div>
     </div>
 </div>
 
 <!-- Add Agent Modal -->
-<div class="modal fade" id="addAgentModal" tabindex="-1" aria-labelledby="addAgentModalLabel" aria-hidden="true">
+<!-- User Modal (Add + Manage — unified) -->
+<div class="modal fade" id="userModal" tabindex="-1" aria-labelledby="userModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content" style="border-radius:16px;border:none;box-shadow:0 10px 30px rgba(0,0,0,0.1);">
             <div class="modal-header" style="border-bottom:1px solid #f0f0f0;padding:20px 25px;">
-                <h5 class="modal-title fw-bold" id="addAgentModalLabel">New agent</h5>
+                <h5 class="modal-title fw-bold" id="userModalLabel">New User</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form action="/admin/users/add" method="post">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <div class="modal-body" style="padding:25px;">
-                    <div class="mb-4">
-                        <label class="form-label text-muted small fw-bold text-uppercase">Full name</label>
-                        <input type="text" name="name" class="form-control form-control-lg shadow-none" placeholder="e.g. John Doe" required style="border-radius:10px;border:1px solid #ddd;font-size:16px;">
-                    </div>
-                    <div class="mb-4">
-                        <label class="form-label text-muted small fw-bold text-uppercase">Email</label>
-                        <input type="email" name="email" class="form-control form-control-lg shadow-none" placeholder="email@example.com" required style="border-radius:10px;border:1px solid #ddd;font-size:16px;">
-                    </div>
-                    <div class="form-check form-switch p-0 d-flex align-items-center justify-content-between">
+            <div class="modal-body" style="padding:25px;">
+                <input type="hidden" id="userModalUserId" value="">
+
+                <div class="mb-4">
+                    <label class="form-label text-muted small fw-bold text-uppercase">Full name</label>
+                    <input type="text" id="userModalName" class="form-control form-control-lg shadow-none" placeholder="e.g. John Doe" required style="border-radius:10px;border:1px solid #ddd;font-size:16px;">
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label text-muted small fw-bold text-uppercase">Email</label>
+                    <input type="email" id="userModalEmail" class="form-control form-control-lg shadow-none" placeholder="email@example.com" required style="border-radius:10px;border:1px solid #ddd;font-size:16px;">
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label text-muted small fw-bold text-uppercase">Role</label>
+                    <ul class="nav user-role-tabs">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-role="agent" type="button">Agent</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-role="reviewer" type="button">Reviewer</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-role="admin" type="button">Administrator</button>
+                        </li>
+                    </ul>
+                    <input type="hidden" id="userModalRole" value="agent">
+                </div>
+
+                <!-- Block/Unblock — visible only in Manage mode -->
+                <div id="userModalBlockSection" style="display:none; padding:16px 18px; background:#fafafa; border-radius:10px; border:1px solid #ebebeb;">
+                    <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <label class="form-check-label fw-bold" for="isAdminSwitch">Administrator rights</label>
-                            <div class="form-text small">Allow managing settings and users</div>
+                            <div class="fw-bold">Account status</div>
+                            <div class="form-text small mb-0" id="userModalStatusText">Active</div>
                         </div>
-                        <input class="form-check-input shadow-none" type="checkbox" name="is_admin" id="isAdminSwitch" style="width:45px;height:24px;cursor:pointer;margin:0;">
+                        <button type="button" class="btn btn-sm btn-outline-dark fw-bold" id="userModalBlockBtn" onclick="toggleUserBlock()">
+                            Block
+                        </button>
                     </div>
                 </div>
-                <div class="modal-footer" style="border-top:1px solid #f0f0f0;padding:20px 25px;">
-                    <button type="button" class="btn btn-light fw-bold px-4" data-bs-dismiss="modal" style="border-radius:10px;">Cancel</button>
-                    <button type="submit" class="btn text-white fw-bold px-5" style="background:#ff385c;border-radius:10px;border:none;">Create</button>
+                <!-- Magic Link — visible only in Manage mode -->
+                <div id="userModalLinkSection" style="display:none; padding:16px 18px; background:#fafafa; border-radius:10px; border:1px solid #ebebeb; margin-top:12px;">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-bold">Access link</div>
+                            <div class="form-text small mb-0">Generate a magic link & email it to the user.</div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-dark fw-bold" id="userModalLinkBtn" onclick="sendUserMagicLink()">
+                            Send Magic Link
+                        </button>
+                    </div>
+
+                    <!-- Result panel — populated after click -->
+                    <div id="userModalLinkResult" style="display:none; margin-top:14px; padding:12px; background:#fff; border-radius:8px; border:1px solid #ebebeb;">
+                        <div id="userModalLinkStatus" class="small fw-bold mb-2"></div>
+                        <div class="small text-muted mb-1">URL (copy & share via Telegram if needed):</div>
+                        <div class="d-flex gap-2 align-items-center">
+                            <input type="text" id="userModalLinkUrl" class="form-control form-control-sm" readonly style="font-size:12px;">
+                            <button type="button" class="btn btn-sm btn-outline-dark" onclick="copyMagicLinkToClipboard()">Copy</button>
+                        </div>
+                    </div>
                 </div>
-            </form>
+            </div>
+            <div class="modal-footer" style="border-top:1px solid #f0f0f0;padding:20px 25px;">
+                <button type="button" class="btn btn-light fw-bold px-4" data-bs-dismiss="modal" style="border-radius:10px;">Cancel</button>
+                <button type="button" id="userModalSaveBtn" class="btn text-white fw-bold px-5" onclick="saveUserModal()" style="background:#ff385c;border-radius:10px;border:none;">Create</button>
+            </div>
         </div>
     </div>
 </div>
@@ -837,75 +1114,325 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
-<script>
-$(document).ready(function () {
-    $.fn.dataTable.ext.search.push(function (settings, data) {
-        if (settings.nTable.id !== 'propertiesTable') return true;
-        var min = parseInt($('#filterPriceMin').val(), 10);
-        var max = parseInt($('#filterPriceMax').val(), 10);
-        var price = parseFloat((data[6] || '').replace(/[^\d]/g, ''));
-        if ((isNaN(min) && isNaN(max)) ||
-            (isNaN(min) && price <= max) ||
-            (min <= price && isNaN(max)) ||
-            (min <= price && price <= max)) return true;
-        return false;
-    });
 
-    var table = $('#propertiesTable').DataTable({
+<script>
+// =====================================================================
+// Sprint 7 Task B.2 — Multi-instance Properties DataTable
+// =====================================================================
+// Initializes one DataTable per .properties-container on the page.
+// Three instances coexist:
+//   - Main Properties tab          (data-cluster-filter="any")
+//   - Engine 1 Single sub-tab      (data-cluster-filter="single_e1")
+//   - Engine 2 Single sub-tab      (data-cluster-filter="single_e2")
+// All share /api/admin/properties as backend; only the cluster_filter
+// param differs. Cross-page selection (selectedPropertyIds Set) is
+// global across all 3 instances.
+// =====================================================================
+
+const SORT_COLUMN_MAP = [
+    null,                  // 0: checkbox
+    null,                  // 1: photo
+    'created_at',          // 2: HODU ID → newest first
+    'site_property_id',    // 3
+    'source_domain',       // 4
+    'area',                // 5: calc_municipality
+    'category',            // 6
+    'size_sqm',            // 7
+    'price',               // 8
+    'status',              // 9
+    null,                  // 10: Duplicates (no meaningful sort)
+    'last_checked_at',     // 11
+];
+
+function formatEuro(value) {
+    if (value === null || value === undefined) return '—';
+    return value.toLocaleString('fr-FR').replace(/,/g, ' ') + ' €';
+}
+function formatDateTime(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function escapeHtml(s) {
+    if (s === null || s === undefined) return '';
+    return String(s)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
+function initPropertiesContainer(container) {
+    const $c = $(container);
+    const scope = container.dataset.scope;
+    const clusterFilter = container.dataset.clusterFilter || 'any';
+    const tableEl = container.querySelector('.properties-table');
+    if (!tableEl) {
+        console.warn(`[initPropertiesContainer] no .properties-table inside scope=${scope}`);
+        return null;
+    }
+
+    const table = $(tableEl).DataTable({
         dom: "<'row'<'col-sm-12'tr>><'row mt-3 align-items-center'<'col-sm-12 col-md-5 small text-muted'i><'col-sm-12 col-md-7 d-flex justify-content-end'p>>",
+        serverSide: true,
+        processing: true,
         order: [[2, 'desc']],
         pageLength: 25,
-        columnDefs: [{ orderable: false, targets: [0, 1] }],
-        // Persist checkbox state across DataTable redraws (pagination/search/sort)
-        // — DataTable rebuilds DOM on each draw, losing :checked state.
-        drawCallback: function() {
+        columnDefs: [{ orderable: false, targets: [0, 1, 10] }],
+        ajax: function (data, callback) {
+            const colIdx = (data.order && data.order[0]) ? data.order[0].column : 2;
+            const sortBy = SORT_COLUMN_MAP[colIdx] || 'created_at';
+            const params = new URLSearchParams({
+                page: Math.floor(data.start / data.length) + 1,
+                pageSize: data.length,
+                sortBy: sortBy,
+                sortDir: (data.order && data.order[0] && data.order[0].dir) || 'desc',
+                cluster_filter: clusterFilter,
+                search: $c.find('.filter-search').val() || '',
+                source: $c.find('.filter-source').val() || '',
+                area: $c.find('.filter-area').val() || '',
+                type: $c.find('.filter-type').val() || '',
+                status: $c.find('.filter-status').val() || '',
+            });
+            const priceMin = $c.find('.filter-price-min').val();
+            const priceMax = $c.find('.filter-price-max').val();
+            if (priceMin) params.append('priceMin', priceMin);
+            if (priceMax) params.append('priceMax', priceMax);
+
+            fetch(`/api/admin/properties?${params.toString()}`, { credentials: 'same-origin' })
+                .then(r => {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                })
+                .then(json => {
+                    callback({
+                        draw: data.draw,
+                        recordsTotal: json.total,
+                        recordsFiltered: json.total,
+                        data: json.data,
+                    });
+                })
+                .catch(err => {
+                    console.error(`[${scope}] AJAX failed:`, err);
+                    callback({
+                        draw: data.draw,
+                        recordsTotal: 0,
+                        recordsFiltered: 0,
+                        data: [],
+                        error: String(err),
+                    });
+                });
+        },
+        columns: [
+            {
+                data: 'id',
+                render: function (data, type, row) {
+                    if (!row.is_active) return '';
+                    // Sprint 7 Task F: merge context drives engine_versions.
+                    // scope=main → 'main' (both engines)
+                    // scope=singleE1 → 'e1' (Engine 1 only)
+                    // scope=singleE2 → 'e2' (Engine 2 only)
+                    const mergeContext = (
+                        scope === 'singleE1' ? 'e1' :
+                        scope === 'singleE2' ? 'e2' : 'main'
+                    );
+                    return `<input type="checkbox" class="property-merge-check"
+                        data-property-id="${escapeHtml(data)}"
+                        data-cluster-id="${escapeHtml((row.e1_cluster && row.e1_cluster.id) || '')}"
+                        data-merge-context="${mergeContext}"
+                        title="To create new cluster choose 2 or more objects"
+                        style="width: 16px; height: 16px; cursor: pointer; accent-color: #059669;"
+                        onclick="event.stopPropagation(); updateBars(this);">`;
+                },
+            },
+            {
+                data: 'main_image',
+                render: function (data) {
+                    return data
+                        ? `<img src="/${escapeHtml(data)}" class="admin-thumb" alt="thumb">`
+                        : '<div class="admin-thumb-empty">N/A</div>';
+                },
+            },
+            {
+                data: 'id',
+                render: function (data) {
+                    return `<span class="text-muted fw-bold">${escapeHtml(String(data).substring(0, 6).toUpperCase())}</span>`;
+                },
+            },
+            {
+                data: 'site_property_id',
+                render: function (data) {
+                    return `<span class="fw-bold">${escapeHtml(data || '')}</span>`;
+                },
+            },
+            { data: 'source_domain', render: escapeHtml },
+            {
+                data: 'area',
+                render: function (data) { return escapeHtml(data) || '—'; },
+            },
+            {
+                data: 'category',
+                render: function (data) { return escapeHtml(data) || '—'; },
+            },
+            {
+                data: 'size_sqm',
+                render: function (data) {
+                    return data ? `${data} m²` : '—';
+                },
+            },
+            {
+                data: 'price',
+                render: function (data) {
+                    return `<span class="fw-bold text-nowrap">${formatEuro(data)}</span>`;
+                },
+            },
+            {
+                data: 'status',
+                render: function (data, type, row) {
+                    if (data === 'NEW') return '<span class="badge badge-new">NEW</span>';
+                    if (data === 'PRICE_CHANGED') return '<span class="badge badge-price">PRICE DROP</span>';
+                    if (data === 'SOLD') return '<span class="badge badge-delisted">SOLD</span>';
+                    if (!row.is_active || data === 'DELISTED') return '<span class="badge badge-delisted">DELISTED</span>';
+                    return '<span class="badge badge-active">ACTIVE</span>';
+                },
+            },
+            {
+                data: null,
+                orderable: false,
+                render: function (data, type, row) {
+                    const badges = [];
+                    if (row.e1_cluster) {
+                        const short = String(row.e1_cluster.id).substring(0, 6).toUpperCase();
+                        const cnt = row.e1_cluster.member_count;
+                        const st = row.e1_cluster.status;
+                        badges.push(
+                            `<a href="#" class="cluster-badge cluster-badge-e1"
+                                title="Engine 1 ${escapeHtml(st)} · ${cnt} member${cnt === 1 ? '' : 's'}"
+                                onclick="event.stopPropagation(); focusCluster('${row.e1_cluster.id}', '1', '${escapeHtml(st)}'); return false;">
+                                E1: ${short}</a>`
+                        );
+                    }
+                    if (row.e2_cluster && window.IS_ADMIN) {
+                        const short = String(row.e2_cluster.id).substring(0, 6).toUpperCase();
+                        const cnt = row.e2_cluster.member_count;
+                        const st = row.e2_cluster.status;
+                        badges.push(
+                            `<a href="#" class="cluster-badge cluster-badge-e2"
+                                title="Engine 2 ${escapeHtml(st)} · ${cnt} member${cnt === 1 ? '' : 's'}"
+                                onclick="event.stopPropagation(); focusCluster('${row.e2_cluster.id}', '2', '${escapeHtml(st)}'); return false;">
+                                E2: ${short}</a>`
+                        );
+                    }
+                    return badges.length ? badges.join('') : '<span class="text-muted">—</span>';
+                },
+            },
+            {
+                data: 'last_checked_at',
+                render: function (data) {
+                    return `<span class="small text-muted fw-medium text-nowrap">${formatDateTime(data)}</span>`;
+                },
+            },
+        ],
+        createdRow: function (row, data) {
+            row.classList.add('clickable-row');
+            row.onclick = function (e) {
+                if (e.target.closest('input,a,button')) return;
+                window.open(`/property/${data.id}`, '_blank');
+            };
+        },
+        drawCallback: function () {
             if (typeof restorePropertyCheckboxState === 'function') {
                 restorePropertyCheckboxState();
             }
-        }
+        },
     });
 
-    $('#customLength').on('change', function () { table.page.len($(this).val()).draw(); });
-    $('#customSearch').on('keyup', function () { table.search($(this).val()).draw(); });
-
-    // Заполняем фильтр Source (индекс 4 — был 3 до добавления checkbox column)
-    table.column(4).data().unique().sort().each(function (d) {
-        var val = $('<div/>').html(d).text().trim();
-        if (val && val !== '—') $('#filterSource').append('<option value="' + val + '">' + val + '</option>');
+    // Per-container event handlers — scoped via $c.find()
+    $c.find('.filter-length').on('change', function () {
+        table.page.len($(this).val()).draw();
     });
 
-    // Заполняем фильтр Area (индекс 5 — был 4)
-    table.column(5).data().unique().sort().each(function (d) {
-        var val = $('<div/>').html(d).text().trim();
-        if (val && val !== '—') $('#filterArea').append('<option value="' + val + '">' + val + '</option>');
+    let searchTimer;
+    $c.find('.filter-search').on('keyup', function () {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => table.draw(), 250);
     });
 
-    // Заполняем фильтр Type (индекс 6 — был 5)
-    table.column(6).data().unique().sort().each(function (d) {
-        var val = $('<div/>').html(d).text().trim();
-        if (val && val !== '—') $('#filterType').append('<option value="' + val + '">' + val + '</option>');
+    // L2 source-toggle — only present in main scope (show_source_toggle=True)
+    const $sourceMenu = $c.find('.property-source-menu');
+    if ($sourceMenu.length > 0) {
+        $sourceMenu.on('click', '.dropdown-item', function (e) {
+            e.preventDefault();
+            const val = $(this).data('value');
+            $c.find('.filter-source').val(val).trigger('change');
+            $c.find('.property-all-btn').removeClass('active');
+            $c.find('.property-source-btn').addClass('active').text('Source: ' + val);
+        });
+        $c.find('.property-all-btn').on('click', function () {
+            $c.find('.filter-source').val('').trigger('change');
+            $c.find('.property-all-btn').addClass('active');
+            $c.find('.property-source-btn').removeClass('active').text('Source');
+        });
+    }
+
+    $c.find('.filter-status, .filter-source, .filter-area, .filter-type').on('change', function () {
+        table.draw();
     });
 
-    // Обработчики фильтров
-    $('#filterStatus').on('change', function () {
-        var val = $.fn.dataTable.util.escapeRegex($(this).val());
-        table.column(9).search(val || '', true, false).draw();  // Status: было col 8, теперь 9
+    let priceTimer;
+    $c.find('.filter-price-min, .filter-price-max').on('keyup change', function () {
+        clearTimeout(priceTimer);
+        priceTimer = setTimeout(() => table.draw(), 200);
     });
 
-    $('#filterSource').on('change', function () {
-        var val = $.fn.dataTable.util.escapeRegex($(this).val());
-        table.column(4).search(val ? '^' + val + '$' : '', true, false).draw(); // Source: было col 3, теперь 4 (после checkbox column)
+    return table;
+}
+
+$(document).ready(function () {
+    // Load filter options once, populate ALL containers
+    fetch('/api/admin/properties/filters', { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            $('.properties-container').each(function () {
+                const $c = $(this);
+                data.sources.forEach(s => {
+                    const esc = escapeHtml(s);
+                    $c.find('.filter-source').append(`<option value="${esc}">${esc}</option>`);
+                    $c.find('.property-source-menu').append(
+                        `<li><a class="dropdown-item" href="#" data-value="${esc}">${esc}</a></li>`
+                    );
+                });
+                data.areas.forEach(a => {
+                    const esc = escapeHtml(a);
+                    $c.find('.filter-area').append(`<option value="${esc}">${esc}</option>`);
+                });
+                data.types.forEach(t => {
+                    const esc = escapeHtml(t);
+                    $c.find('.filter-type').append(`<option value="${esc}">${esc}</option>`);
+                });
+            });
+        })
+        .catch(err => console.warn('[filters] load failed:', err));
+
+    // Initialise every .properties-container on the page
+    document.querySelectorAll('.properties-container').forEach(initPropertiesContainer);
+
+    // When a tab becomes visible, DataTable needs to recalculate column widths
+    // (it can't measure hidden elements correctly during initial init).
+    document.addEventListener('shown.bs.tab', function (e) {
+        const targetSelector = e.target.getAttribute('data-bs-target');
+        if (!targetSelector) return;
+        const target = document.querySelector(targetSelector);
+        if (!target) return;
+        target.querySelectorAll('.properties-container').forEach(c => {
+            const tableEl = c.querySelector('.properties-table');
+            if (tableEl && $.fn.dataTable.isDataTable(tableEl)) {
+                $(tableEl).DataTable().columns.adjust();
+            }
+        });
     });
-    $('#filterArea').on('change', function () {
-        var val = $.fn.dataTable.util.escapeRegex($(this).val());
-        table.column(5).search(val ? '^' + val + '$' : '', true, false).draw(); // Area: было col 4, теперь 5
-    });
-    $('#filterType').on('change', function () {
-        var val = $.fn.dataTable.util.escapeRegex($(this).val());
-        table.column(6).search(val ? '^' + val + '$' : '', true, false).draw(); // Type: было col 5, теперь 6
-    });
-    
-    $('#filterPriceMin, #filterPriceMax').on('keyup change', function () { table.draw(); });
 });
 </script>
 
@@ -1179,6 +1706,7 @@ function startScrapers() {
             <span id="property-merge-count" style="font-weight: 600; font-size: 15px;">
                 0 properties selected
             </span>
+            <span id="property-merge-target" style="font-size: 12px; opacity: 0.85; margin-left: 12px;"></span>
         </div>
         <div class="d-flex gap-2">
             <button type="button" class="btn btn-sm" id="property-merge-clear"
@@ -1439,11 +1967,9 @@ function updatePropertyMergeBar() {
     const clustersChecked = document.querySelectorAll('.cluster-bulk-check:checked').length;
     const bar = document.getElementById('property-merge-bar');
     const label = document.getElementById('property-merge-count');
-    // Use Set count — survives DataTable pagination/search hiding rows from DOM
+    const targetLabel = document.getElementById('property-merge-target');
     const n = selectedPropertyIds.size;
 
-    // Group C precedence: if any cluster checkbox is active, hide Group D
-    // unconditionally. Admin should finish cluster-level action first.
     if (clustersChecked > 0 || n === 0) {
         bar.style.transform = 'translateY(100%)';
         setTimeout(() => { bar.style.display = 'none'; }, 250);
@@ -1451,10 +1977,23 @@ function updatePropertyMergeBar() {
     }
 
     label.textContent = `${n} propert${n === 1 ? 'y' : 'ies'} selected`;
+
+    // Sprint 7 Task F: show target engines based on selected checkboxes
+    if (targetLabel) {
+        const contexts = new Set();
+        document.querySelectorAll('.property-merge-check:checked').forEach(cb => {
+            contexts.add(cb.dataset.mergeContext || 'main');
+        });
+        let engineLabel;
+        if (contexts.size === 1 && contexts.has('e1')) engineLabel = '→ Engine 1';
+        else if (contexts.size === 1 && contexts.has('e2')) engineLabel = '→ Engine 2';
+        else engineLabel = window.IS_ADMIN ? '→ Engine 1 + Engine 2' : '→ Engine 1';
+        targetLabel.textContent = engineLabel;
+    }
+
     if (bar.style.display === 'none' || !bar.style.display) {
         bar.style.display = 'block';
-        // Force reflow so CSS transition animates
-        bar.offsetHeight;  // eslint-disable-line no-unused-expressions
+        bar.offsetHeight;
         bar.style.transform = 'translateY(0)';
     }
 }
@@ -1472,31 +2011,13 @@ function updateBars(changedCheckbox) {
 }
 
 function clearPropertySelection() {
-    // Clear Set (source of truth)
+    // Clear Set (source of truth for cross-page selection)
     selectedPropertyIds.clear();
 
-    // Clear ALL checkboxes — including those on detached DataTable rows
-    // (hidden by current page/search filter). querySelectorAll only finds
-    // attached DOM nodes; DataTable detaches rows that don't match current
-    // page/search, so we MUST use the DataTable API to iterate every row.
-    if (window.jQuery && jQuery.fn.dataTable && jQuery.fn.dataTable.isDataTable('#propertiesTable')) {
-        try {
-            const table = jQuery('#propertiesTable').DataTable();
-            // { search: 'none', paging: 'none' } → all rows regardless of
-            // current filter / pagination. .nodes() returns <tr> nodes including
-            // detached ones (which DataTable holds in its internal cache).
-            table.rows({ search: 'none', paging: 'none' }).nodes().each(function(tr) {
-                tr.querySelectorAll('.property-merge-check').forEach(cb => {
-                    cb.checked = false;
-                });
-            });
-        } catch (e) {
-            console.warn('[clearPropertySelection] DataTable iteration failed:', e);
-        }
-    }
-
-    // Also walk visible DOM for any .property-merge-check that's not part of
-    // a DataTable (e.g. inside cluster_card.html partials in Duplicates tab).
+    // Sprint 7 Task A: with serverSide DataTable, only the current page is
+    // in DOM — there are no detached rows to iterate. A single pass over
+    // .property-merge-check elements covers both Properties tab and any
+    // checkboxes inside cluster_card.html partials in Duplicates tab.
     document.querySelectorAll('.property-merge-check').forEach(cb => {
         cb.checked = false;
     });
@@ -1557,6 +2078,30 @@ async function checkRecurrenceBeforeMerge() {
 async function mergeProperties(propertyIds) {
     const csrfToken = document.querySelector('input[name="csrf_token"]').value;
 
+    // Sprint 7 Task F: derive engine_versions from selected checkboxes'
+    // data-merge-context. Backend creates one cluster per engine.
+    //   main (Properties tab) → '1,2' (both engines — admin's intent
+    //                            "these are duplicates" applies universally)
+    //   e1 (Engine 1 Single)   → '1'
+    //   e2 (Engine 2 Single)   → '2'
+    //   mixed contexts         → '1,2' (safest)
+    const checkedBoxes = document.querySelectorAll('.property-merge-check:checked');
+    const contexts = new Set();
+    checkedBoxes.forEach(cb => contexts.add(cb.dataset.mergeContext || 'main'));
+    let engineVersions;
+    if (contexts.size === 1 && contexts.has('e1')) {
+        engineVersions = '1';
+    } else if (contexts.size === 1 && contexts.has('e2')) {
+        engineVersions = '2';
+    } else {
+        engineVersions = '1,2';
+    }
+    // Reviewers can't create E2 clusters — backend will silently strip,
+    // but we mirror that here so the UI hint (Step 5) shows correct label.
+    if (!window.IS_ADMIN) {
+        engineVersions = engineVersions.split(',').filter(e => e === '1').join(',') || '1';
+    }
+
     try {
         const response = await fetch('/admin/clusters/manual-merge', {
             method: 'POST',
@@ -1566,6 +2111,7 @@ async function mergeProperties(propertyIds) {
             },
             body: new URLSearchParams({
                 property_ids: propertyIds.join(','),
+                engine_versions: engineVersions,
             }),
         });
 
@@ -1751,6 +2297,766 @@ document.addEventListener('change', function(e) {
 
 {# Sprint 6 Phase A: feedback modal partial. Defines window.openFeedbackModal(). #}
 {% include "partials/feedback_modal.html" %}
+
+{# Sprint 7 Step 3: cluster manage modal. Triggered by ⚙ Manage button
+   on any cluster card. Hosts all per-cluster edit actions. #}
+{% include "partials/cluster_manage_modal.html" %}
+
+<script>
+// ===================================================================
+// USER MODAL — Add + Manage (Sprint 7 Phase C iteration 2)
+// ===================================================================
+// Unified modal for creating new users and managing existing ones.
+// Replaces the broken classic <form method=post> submission that hung
+// the page (CSRF middleware consumed body, handler waited forever).
+//
+// All calls go through fetch() with X-CSRF-Token header — middleware
+// uses the header path and leaves the body intact for FastAPI's
+// Form(...) params.
+// ===================================================================
+
+// Currently-edited user ID; null = add mode
+let currentUserId = null;
+
+function setRoleTab(role) {
+    document.querySelectorAll('.user-role-tabs .nav-link').forEach(btn => {
+        if (btn.dataset.role === role) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+    document.getElementById('userModalRole').value = role;
+}
+
+function openAddUserModal() {
+    currentUserId = null;
+    document.getElementById('userModalLabel').textContent = 'New User';
+    document.getElementById('userModalUserId').value = '';
+    document.getElementById('userModalName').value = '';
+    document.getElementById('userModalEmail').value = '';
+    document.getElementById('userModalEmail').disabled = false;
+    setRoleTab('agent');
+    document.getElementById('userModalBlockSection').style.display = 'none';
+    document.getElementById('userModalLinkSection').style.display = 'none';
+    document.getElementById('userModalLinkResult').style.display = 'none';
+    document.getElementById('userModalSaveBtn').textContent = 'Create';
+
+    const modal = new bootstrap.Modal(document.getElementById('userModal'));
+    modal.show();
+}
+
+function openManageUserModal(userId, name, email, role, isActive) {
+    currentUserId = userId;
+    document.getElementById('userModalLabel').textContent = 'Manage User';
+    document.getElementById('userModalUserId').value = userId;
+    document.getElementById('userModalName').value = name;
+    document.getElementById('userModalEmail').value = email;
+    document.getElementById('userModalEmail').disabled = true;  // email = identity
+    setRoleTab(role);
+    document.getElementById('userModalBlockSection').style.display = 'block';
+    document.getElementById('userModalStatusText').textContent = isActive ? 'Active' : 'Blocked';
+    document.getElementById('userModalBlockBtn').textContent = isActive ? 'Block' : 'Unblock';
+
+    // Magic Link section: visible only for active users. Blocked users
+    // can't sign in regardless, so generating a link for them is pointless
+    // — the backend would refuse with HTTP 400 anyway.
+    document.getElementById('userModalLinkSection').style.display = isActive ? 'block' : 'none';
+    document.getElementById('userModalLinkResult').style.display = 'none';
+
+    document.getElementById('userModalSaveBtn').textContent = 'Save';
+
+    const modal = new bootstrap.Modal(document.getElementById('userModal'));
+    modal.show();
+}
+
+// Wire role tab clicks via event delegation — works for both create/edit modes.
+// Scoped to .user-role-tabs container so we don't hijack other nav-links.
+document.addEventListener('click', function(e) {
+    if (e.target && e.target.classList &&
+        e.target.classList.contains('nav-link') &&
+        e.target.dataset.role &&
+        e.target.closest('.user-role-tabs')) {
+        setRoleTab(e.target.dataset.role);
+    }
+});
+
+async function saveUserModal() {
+    const name = document.getElementById('userModalName').value.trim();
+    const email = document.getElementById('userModalEmail').value.trim();
+    const role = document.getElementById('userModalRole').value;
+    const saveBtn = document.getElementById('userModalSaveBtn');
+
+    if (!name || !email) {
+        alert('Name and email are required.');
+        return;
+    }
+
+    saveBtn.disabled = true;
+    saveBtn.style.opacity = '0.5';
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+
+    const url = currentUserId
+        ? `/admin/users/${currentUserId}/update`
+        : '/admin/users/add';
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-Token': csrfToken,
+            },
+            body: new URLSearchParams({
+                name: name,
+                email: email,
+                role: role,
+            }),
+        });
+
+        if (!response.ok) {
+            const errBody = await response.json().catch(() => ({ detail: 'unknown error' }));
+            alert(`Failed: ${errBody.detail || response.status}`);
+            return;
+        }
+
+        // Reload to see updated user list
+        window.location.reload();
+    } catch (e) {
+        alert(`Failed: ${e.message}`);
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = '1';
+    }
+}
+
+async function toggleUserBlock() {
+    if (!currentUserId) return;
+
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+    const blockBtn = document.getElementById('userModalBlockBtn');
+    blockBtn.disabled = true;
+
+    try {
+        const response = await fetch(`/admin/users/${currentUserId}/toggle`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-Token': csrfToken,
+            },
+            body: '',
+        });
+
+        if (!response.ok) {
+            const errBody = await response.json().catch(() => ({ detail: 'unknown error' }));
+            alert(`Failed: ${errBody.detail || response.status}`);
+            return;
+        }
+
+        const data = await response.json();
+        document.getElementById('userModalStatusText').textContent = data.is_active ? 'Active' : 'Blocked';
+        blockBtn.textContent = data.is_active ? 'Block' : 'Unblock';
+    } catch (e) {
+        alert(`Failed: ${e.message}`);
+    } finally {
+        blockBtn.disabled = false;
+    }
+}
+
+async function sendUserMagicLink() {
+    if (!currentUserId) return;
+
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+    const sendBtn = document.getElementById('userModalLinkBtn');
+    const resultPanel = document.getElementById('userModalLinkResult');
+    const statusEl = document.getElementById('userModalLinkStatus');
+    const urlEl = document.getElementById('userModalLinkUrl');
+
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending...';
+
+    try {
+        const response = await fetch(`/admin/users/${currentUserId}/send-link`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-Token': csrfToken,
+            },
+            body: '',
+        });
+
+        if (!response.ok) {
+            const errBody = await response.json().catch(() => ({ detail: 'unknown error' }));
+            alert(`Failed: ${errBody.detail || response.status}`);
+            return;
+        }
+
+        const data = await response.json();
+
+        // Always populate URL — admin can copy/share manually even if email worked
+        urlEl.value = data.url;
+
+        // Status line reflects email delivery outcome
+        if (data.sent) {
+            statusEl.textContent = `✓ Sent to ${data.email}`;
+            statusEl.style.color = '#059669';
+        } else {
+            const reason = data.error || 'unknown reason';
+            statusEl.textContent = `⚠ Email not delivered (${reason}) — copy URL below`;
+            statusEl.style.color = '#DC2626';
+        }
+
+        resultPanel.style.display = 'block';
+    } catch (e) {
+        alert(`Failed: ${e.message}`);
+    } finally {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send Magic Link';
+    }
+}
+
+async function copyMagicLinkToClipboard() {
+    const urlEl = document.getElementById('userModalLinkUrl');
+    urlEl.select();
+    try {
+        await navigator.clipboard.writeText(urlEl.value);
+        // Brief visual feedback
+        const statusEl = document.getElementById('userModalLinkStatus');
+        const originalText = statusEl.textContent;
+        const originalColor = statusEl.style.color;
+        statusEl.textContent = '✓ Copied to clipboard';
+        statusEl.style.color = '#059669';
+        setTimeout(() => {
+            statusEl.textContent = originalText;
+            statusEl.style.color = originalColor;
+        }, 1500);
+    } catch (e) {
+        // Fallback for older browsers without clipboard API
+        document.execCommand('copy');
+    }
+}
+</script>
+
+<script>
+// =====================================================================
+// Sprint 7 Task B — focusCluster: navigate from a property row's
+// cluster badge to the corresponding cluster card in Duplicates tab.
+// =====================================================================
+// Three-step tab switch:
+//   1. Main "Duplicates" tab (#tab-clusters)
+//   2. Engine pill (#engine1-pane | #engine2-pane)
+//   3. Status sub-tab (#pills-pending-{N} | #pills-approved-{N})
+// Then scrollIntoView on cluster-card-{id} with brief pink highlight.
+//
+// Approved clusters are paginated (25/page server-side). If the target
+// cluster isn't on the current page, scroll silently no-ops; future
+// enhancement would query backend for the right page index and reload.
+window.focusCluster = function(clusterId, engineVersion, clusterStatus) {
+    // 1. Switch to Duplicates main tab
+    const mainTab = document.querySelector('button[data-bs-target="#tab-clusters"]');
+    if (mainTab) bootstrap.Tab.getOrCreateInstance(mainTab).show();
+
+    // 2. Switch engine sub-pill
+    const engineBtn = document.querySelector(
+        `button[data-bs-target="#engine${engineVersion}-pane"]`
+    );
+    if (engineBtn) bootstrap.Tab.getOrCreateInstance(engineBtn).show();
+
+    // 3. Switch status sub-tab (Pending or Approved)
+    let statusTabTarget = null;
+    if (clusterStatus === 'PENDING') {
+        statusTabTarget = `#pills-pending-${engineVersion}`;
+    } else if (clusterStatus === 'APPROVED') {
+        statusTabTarget = `#pills-approved-${engineVersion}`;
+    }
+    if (statusTabTarget) {
+        const statusBtn = document.querySelector(`button[data-bs-target="${statusTabTarget}"]`);
+        if (statusBtn) bootstrap.Tab.getOrCreateInstance(statusBtn).show();
+    }
+
+    // 4. Scroll to cluster card after tab animations settle (~300ms)
+    setTimeout(() => {
+        const card = document.getElementById(`cluster-card-${clusterId}`);
+        if (card) {
+            card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            // Brief pink box-shadow highlight
+            const originalShadow = card.style.boxShadow;
+            card.style.transition = 'box-shadow 0.6s ease';
+            card.style.boxShadow = '0 0 0 3px #ff385c';
+            setTimeout(() => {
+                card.style.boxShadow = originalShadow;
+            }, 1500);
+        } else {
+            // Not on current page (Approved page 2+, or already dissolved).
+            // For v1 just log — future enhancement: backend lookup for
+            // approved_page index + URL navigation.
+            console.warn(`[focusCluster] cluster-card-${clusterId} not on current page`);
+        }
+    }, 350);
+};
+</script>
+
+<script>
+// =====================================================================
+// CLUSTER MANAGE MODAL — Sprint 7 Step 3
+// =====================================================================
+// All per-cluster edit actions live here: approve/reject/dissolve,
+// remove member from cluster, merge selected members into new cluster.
+// Cluster cards are now visual-only; modal is the workspace.
+//
+// Data flow: modal populated by reading data-* attributes from the
+// originating cluster card — no fetch round-trip. State:
+//   manageModalCurrentCluster — metadata of the cluster being edited
+//   manageModalSelected       — Set of property IDs checked for merge
+// =====================================================================
+
+let manageModalCurrentCluster = null;
+const manageModalSelected = new Set();
+
+function openClusterManageModal(clusterId) {
+    const card = document.getElementById(`cluster-card-${clusterId}`);
+    if (!card) {
+        alert(`Cluster ${clusterId} not found on this page (maybe deleted in another tab?)`);
+        return;
+    }
+
+    // Read cluster metadata from card data-* attributes
+    manageModalCurrentCluster = {
+        id: clusterId,
+        status: card.dataset.clusterStatus,
+        engine: card.dataset.clusterEngine,
+        memberCount: parseInt(card.dataset.memberCount) || 0,
+        aiScore: card.dataset.aiScore,
+        phashMatches: card.dataset.phashMatches,
+        createdAt: card.dataset.createdAt,
+        verdictLockedAt: card.dataset.verdictLockedAt,
+        creatorName: card.dataset.creatorName,
+        isManualMerge: card.dataset.isManualMerge === 'true',
+        hasVerdictRecord: card.dataset.hasVerdictRecord === 'true',
+        isReverted: card.dataset.isReverted === 'true',
+        notes: card.dataset.clusterNotes || '',
+    };
+
+    manageModalSelected.clear();
+
+    populateModalClusterInfo();
+    populateModalMembers(card);
+    populateModalFooter();
+    updateModalMergeBar();
+
+    const modalEl = document.getElementById('clusterManageModal');
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+}
+
+function populateModalClusterInfo() {
+    const c = manageModalCurrentCluster;
+    document.getElementById('modalClusterId').textContent = c.id.slice(0, 8).toUpperCase();
+    document.getElementById('modalClusterMemberCount').textContent = c.memberCount;
+
+    // Status + engine badges
+    let statusBadge;
+    if (c.status === 'PENDING') {
+        statusBadge = '<span class="badge" style="background:#FEF3C7;color:#D97706;padding:5px 10px;border-radius:6px;font-weight:700;">Pending review</span>';
+    } else {
+        statusBadge = '<span class="badge" style="background:#DCFCE7;color:#059669;padding:5px 10px;border-radius:6px;font-weight:700;">Approved</span>';
+    }
+    const engineBadge = `<span class="badge" style="background:#F3F4F6;color:#4B5563;padding:5px 10px;border-radius:6px;font-weight:600;">Engine ${escapeHtml(c.engine)}</span>`;
+    document.getElementById('modalClusterStatusBadges').innerHTML = statusBadge + engineBadge;
+
+    // Meta info row
+    const parts = [];
+    if (c.isReverted) {
+        // Sprint 7 Task E: re-review state — engine added new member to
+        // a previously-approved cluster. Show prominent warning with the
+        // original approver context preserved in cluster.notes.
+        parts.push(`⚠️ <strong style="color:#B91C1C;">Re-review</strong> <span class="text-muted small">— engine added new member to previously-approved cluster</span>`);
+    } else if (c.isManualMerge) {
+        const name = c.creatorName || '[deleted user]';
+        parts.push(`✋ Created by <strong class="text-dark">${escapeHtml(name)}</strong>`);
+    } else if (c.status === 'APPROVED' && c.hasVerdictRecord) {
+        const name = c.creatorName || '[deleted user]';
+        parts.push(`✅ Approved by <strong class="text-dark">${escapeHtml(name)}</strong> <span class="text-muted small">(detected by Engine ${escapeHtml(c.engine)})</span>`);
+    } else if (c.status === 'APPROVED') {
+        parts.push(`✅ Approved <span class="text-muted small">(detected by Engine ${escapeHtml(c.engine)}, legacy)</span>`);
+    } else {
+        parts.push(`🔍 Detected by <strong class="text-dark">Engine ${escapeHtml(c.engine)}</strong>`);
+    }
+
+    const when = c.verdictLockedAt || c.createdAt;
+    if (when) parts.push(`📅 ${escapeHtml(when)}`);
+
+    if (c.aiScore && c.aiScore !== '') {
+        const score = (parseFloat(c.aiScore) * 100).toFixed(1);
+        parts.push(`🤖 Text AI ${score}%`);
+    }
+
+    const phashCount = parseInt(c.phashMatches) || 0;
+    if (phashCount > 0) {
+        parts.push(`🖼️ ${phashCount} photo match${phashCount === 1 ? '' : 'es'}`);
+    }
+
+    let metaHtml = parts.join(' &nbsp;·&nbsp; ');
+
+    // For reverted clusters — add full audit info block below the meta line
+    if (c.isReverted && c.notes) {
+        metaHtml += `<div class="mt-2 p-2" style="background:#FEF3C7;border-left:3px solid #DC2626;border-radius:4px;font-size:12px;">
+            <strong>Audit:</strong> ${escapeHtml(c.notes)}
+        </div>`;
+    }
+
+    document.getElementById('modalClusterMeta').innerHTML = metaHtml;
+}
+
+function populateModalMembers(card) {
+    const memberRows = card.querySelectorAll('table tbody tr[data-property-id]');
+    if (memberRows.length === 0) {
+        document.getElementById('modalMembersTableBody').innerHTML =
+            '<tr><td colspan="8" class="text-center text-muted py-4">No members</td></tr>';
+        return;
+    }
+
+    let html = '';
+    memberRows.forEach(row => {
+        const propId = row.dataset.propertyId;
+        const sourceDomain = row.dataset.sourceDomain || '';
+        const siteId = row.dataset.siteId || '';
+        const price = row.dataset.price;
+        const size = row.dataset.size;
+        const category = row.dataset.category;
+        const area = row.dataset.area;
+        const isActive = row.dataset.isActive === 'true';
+        const thumb = row.dataset.thumb;
+
+        const priceStr = price && parseInt(price) > 0
+            ? parseInt(price).toLocaleString('fr-FR').replace(/,/g, ' ') + ' €'
+            : '—';
+        const sizeStr = size && !isNaN(parseFloat(size))
+            ? Math.floor(parseFloat(size)) + ' m²'
+            : '—';
+        const thumbHtml = thumb
+            ? `<img src="/${escapeHtml(thumb.replace(/\\/g, '/'))}" style="width:50px;height:38px;object-fit:cover;border-radius:4px;${!isActive ? 'opacity:0.5;' : ''}">`
+            : '<div style="width:50px;height:38px;border-radius:4px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:9px;color:#9ca3af;">N/A</div>';
+
+        const rowClass = !isActive ? 'text-muted' : '';
+        const checkboxHtml = isActive
+            ? `<input type="checkbox" class="modal-member-check" data-property-id="${escapeHtml(propId)}" onclick="event.stopPropagation(); toggleModalMemberCheck(this);" style="width:18px;height:18px;cursor:pointer;accent-color:#1E40AF;">`
+            : '';
+        const openInNewTab = `window.open('/property/${escapeHtml(propId)}', '_blank')`;
+
+        html += `
+            <tr data-modal-prop-id="${escapeHtml(propId)}" class="${rowClass}">
+                <td style="padding-left:12px;" onclick="event.stopPropagation();">${checkboxHtml}</td>
+                <td onclick="${openInNewTab}" style="cursor:pointer;">${thumbHtml}</td>
+                <td onclick="${openInNewTab}" style="cursor:pointer;">
+                    <div class="fw-bold text-dark text-truncate" title="${escapeHtml(sourceDomain)}">${escapeHtml(sourceDomain)}</div>
+                    <div class="small text-muted">ID: ${escapeHtml(siteId)}${!isActive ? ' · <span style="color:#9ca3af;">delisted</span>' : ''}</div>
+                </td>
+                <td onclick="${openInNewTab}" style="cursor:pointer;" class="text-truncate text-muted">${escapeHtml(area) || '—'}</td>
+                <td onclick="${openInNewTab}" style="cursor:pointer;" class="text-truncate text-muted">${escapeHtml(category) || '—'}</td>
+                <td onclick="${openInNewTab}" style="cursor:pointer;" class="text-nowrap text-muted">${sizeStr}</td>
+                <td onclick="${openInNewTab}" style="cursor:pointer;" class="fw-bold text-nowrap">${priceStr}</td>
+                <td>
+                    <button type="button" class="btn btn-sm p-1 shadow-none modal-remove-btn"
+                            onclick="event.stopPropagation(); removeMemberFromModal('${escapeHtml(propId)}', this);"
+                            title="Remove from cluster"
+                            style="border:none;background:transparent;color:#6c757d;transition:color 0.2s;"
+                            onmouseover="this.style.color='#ff385c'"
+                            onmouseout="this.style.color='#6c757d'">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+
+    document.getElementById('modalMembersTableBody').innerHTML = html;
+}
+
+function populateModalFooter() {
+    const c = manageModalCurrentCluster;
+    let html = '<button type="button" class="btn btn-light fw-bold" data-bs-dismiss="modal" style="border-radius:8px;padding:8px 16px;">Close</button>';
+
+    if (c.status === 'PENDING') {
+        html += `
+            <button type="button" class="btn fw-bold ms-2"
+                    onclick="rejectClusterFromModal('${c.id}')"
+                    style="background:#fff0f2;color:#ff385c;border:1px solid #ffd1d8;border-radius:8px;padding:8px 16px;">
+                ✕ Reject (Dissolve)
+            </button>
+            <button type="button" class="btn fw-bold"
+                    onclick="approveClusterFromModal('${c.id}')"
+                    style="background:#DCFCE7;color:#059669;border:1px solid #BBF7D0;border-radius:8px;padding:8px 16px;">
+                ✓ Approve
+            </button>
+        `;
+    } else {
+        html += `
+            <button type="button" class="btn fw-bold ms-2"
+                    onclick="rejectClusterFromModal('${c.id}')"
+                    style="background:#fff0f2;color:#ff385c;border:1px solid #ffd1d8;border-radius:8px;padding:8px 16px;">
+                ✕ Dissolve Cluster
+            </button>
+        `;
+    }
+
+    document.getElementById('modalClusterFooter').innerHTML = html;
+}
+
+function toggleModalMemberCheck(checkbox) {
+    const pid = checkbox.dataset.propertyId;
+    if (!pid) return;
+    if (checkbox.checked) manageModalSelected.add(pid);
+    else manageModalSelected.delete(pid);
+    updateModalMergeBar();
+}
+
+function updateModalMergeBar() {
+    const n = manageModalSelected.size;
+    const bar = document.getElementById('modalMergeBar');
+    if (!bar) return;
+
+    if (n === 0) {
+        bar.style.display = 'none';
+        return;
+    }
+
+    bar.style.display = 'block';
+    document.getElementById('modalMergeCount').textContent = `${n} member${n === 1 ? '' : 's'} selected`;
+
+    const btn = document.getElementById('modalMergeBtn');
+    const hint = document.getElementById('modalMergeHint');
+    if (n < 2) {
+        hint.textContent = '— need at least 2 to merge';
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.style.cursor = 'not-allowed';
+    } else {
+        hint.textContent = `→ creates a new Engine ${manageModalCurrentCluster.engine} cluster (current cluster downsizes or dissolves)`;
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+    }
+}
+
+async function mergeSelectedInManageModal() {
+    const propertyIds = Array.from(manageModalSelected);
+    if (propertyIds.length < 2) return;
+    if (propertyIds.length > 100) {
+        alert('Too many (max 100).');
+        return;
+    }
+
+    const engine = manageModalCurrentCluster.engine;
+    const btn = document.getElementById('modalMergeBtn');
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = '⏳ Checking...';
+
+    try {
+        // Recurrence pre-check — warn admin if these pairs were ever rejected
+        try {
+            const checkResp = await fetch(
+                `/admin/clusters/recurrence-check?property_ids=${encodeURIComponent(propertyIds.join(','))}`
+            );
+            if (checkResp.ok) {
+                const { count } = await checkResp.json();
+                if (count > 0) {
+                    const proceed = confirm(
+                        `⚠️ ${count} pair${count === 1 ? '' : 's'} were previously rejected as not-duplicates.\n\n` +
+                        `Merging will override prior admin decision and erase that feedback.\n\nContinue?`
+                    );
+                    if (!proceed) {
+                        btn.disabled = false;
+                        btn.textContent = originalText;
+                        return;
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[modal/merge] recurrence-check failed:', e);
+        }
+
+        btn.textContent = '⏳ Merging...';
+        const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+        const response = await fetch('/admin/clusters/manual-merge', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-Token': csrfToken,
+            },
+            body: new URLSearchParams({
+                property_ids: propertyIds.join(','),
+                engine_versions: engine,  // same engine as current cluster
+            }),
+        });
+
+        if (!response.ok) {
+            const errBody = await response.json().catch(() => ({ detail: 'unknown error' }));
+            alert(`Merge failed: ${errBody.detail || response.status}`);
+            btn.disabled = false;
+            btn.textContent = originalText;
+            return;
+        }
+
+        btn.textContent = '✓ Merged — reloading...';
+        btn.style.background = '#DCFCE7';
+        btn.style.color = '#059669';
+        setTimeout(() => window.location.reload(), 600);
+    } catch (e) {
+        alert(`Merge failed: ${e.message}`);
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
+}
+
+function removeMemberFromModal(propId, btnEl) {
+    const clusterId = manageModalCurrentCluster.id;
+    const shortP = propId.slice(0, 8).toUpperCase();
+
+    // Open feedback modal — Bootstrap stacks modals correctly
+    openFeedbackModal({
+        endpoint: `/admin/clusters/${clusterId}/remove/${propId}`,
+        title: `Remove property ${shortP}`,
+        confirmText: 'Remove',
+        onSuccess: () => {
+            const row = btnEl.closest('tr');
+            if (row) row.remove();
+
+            const remaining = document.querySelectorAll('#modalMembersTableBody tr[data-modal-prop-id]').length;
+            document.getElementById('modalClusterMemberCount').textContent = remaining;
+            manageModalCurrentCluster.memberCount = remaining;
+
+            manageModalSelected.delete(propId);
+            updateModalMergeBar();
+
+            // If cluster shrank below 2 members, backend dissolved it — reload
+            if (remaining < 2) {
+                setTimeout(() => {
+                    const m = bootstrap.Modal.getInstance(document.getElementById('clusterManageModal'));
+                    if (m) m.hide();
+                    window.location.reload();
+                }, 600);
+            }
+        },
+    });
+}
+
+async function approveClusterFromModal(clusterId) {
+    if (!confirm(`Approve cluster ${clusterId.slice(0,8).toUpperCase()}?\n\nThis locks the cluster — engine will respect this verdict on future runs.`)) return;
+
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+    try {
+        const response = await fetch(`/admin/clusters/${clusterId}/approve`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-Token': csrfToken,
+            },
+            body: '',
+        });
+
+        if (!response.ok) {
+            alert(`Approve failed: HTTP ${response.status}`);
+            return;
+        }
+
+        const m = bootstrap.Modal.getInstance(document.getElementById('clusterManageModal'));
+        if (m) m.hide();
+        window.location.reload();
+    } catch (e) {
+        alert(`Approve failed: ${e.message}`);
+    }
+}
+
+async function rejectClusterFromModal(clusterId) {
+    const c = manageModalCurrentCluster;
+    const verb = c.status === 'APPROVED' ? 'Dissolve' : 'Reject';
+    const shortId = clusterId.slice(0, 8).toUpperCase();
+
+    openFeedbackModal({
+        endpoint: `/admin/clusters/${clusterId}/reject`,
+        title: `${verb} cluster ${shortId}`,
+        confirmText: verb,
+        onSuccess: () => {
+            const m = bootstrap.Modal.getInstance(document.getElementById('clusterManageModal'));
+            if (m) m.hide();
+            window.location.reload();
+        },
+    });
+}
+</script>
+
+<script>
+// =====================================================================
+// V1-AdminAuthority Sprint 8 — member proposal approve/reject
+// =====================================================================
+// Inline buttons on proposal_card.html call these. Approve = direct
+// POST with confirm prompt. Reject = openFeedbackModal (reuses the
+// existing chips+text pattern from cluster reject for blacklist reason).
+// Both endpoints live at /admin/proposals/{id}/{approve|reject}.
+
+async function approveProposal(proposalId) {
+    const shortId = proposalId.slice(0, 8).toUpperCase();
+    if (!confirm(`Approve proposal ${shortId}?\n\nProperty will be added to the cluster.\n\nThis action cannot be undone.`)) return;
+
+    const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+    const card = document.getElementById(`proposal-card-${proposalId}`);
+    const approveBtn = card ? card.querySelector('.proposal-approve-btn') : null;
+    const rejectBtn = card ? card.querySelector('.proposal-reject-btn') : null;
+    if (approveBtn) { approveBtn.disabled = true; approveBtn.style.opacity = '0.5'; }
+    if (rejectBtn)  { rejectBtn.disabled = true;  rejectBtn.style.opacity = '0.5'; }
+
+    try {
+        const response = await fetch(`/admin/proposals/${proposalId}/approve`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-Token': csrfToken,
+            },
+            body: new URLSearchParams({ reason: '' }),
+        });
+        if (!response.ok) {
+            const errBody = await response.json().catch(() => ({ detail: 'unknown error' }));
+            alert(`Approve failed: ${errBody.detail || response.status}`);
+            if (approveBtn) { approveBtn.disabled = false; approveBtn.style.opacity = '1'; }
+            if (rejectBtn)  { rejectBtn.disabled = false;  rejectBtn.style.opacity = '1'; }
+            return;
+        }
+        // Fade card out then reload — cluster member_count needs server-side refresh
+        if (card) {
+            card.style.transition = 'opacity 0.25s';
+            card.style.opacity = '0';
+        }
+        setTimeout(() => window.location.reload(), 500);
+    } catch (e) {
+        alert(`Approve failed: ${e.message}`);
+        if (approveBtn) { approveBtn.disabled = false; approveBtn.style.opacity = '1'; }
+        if (rejectBtn)  { rejectBtn.disabled = false;  rejectBtn.style.opacity = '1'; }
+    }
+}
+
+function rejectProposal(proposalId) {
+    const shortId = proposalId.slice(0, 8).toUpperCase();
+    // Reuse feedback modal — same chips + free text pattern as cluster reject.
+    // Endpoint signature matches: reason_attributes (CSV) + reason_text (string).
+    openFeedbackModal({
+        endpoint: `/admin/proposals/${proposalId}/reject`,
+        title: `Reject proposal ${shortId}`,
+        confirmText: 'Reject',
+        onSuccess: () => {
+            const card = document.getElementById(`proposal-card-${proposalId}`);
+            if (card) {
+                card.style.transition = 'opacity 0.25s';
+                card.style.opacity = '0';
+            }
+            setTimeout(() => window.location.reload(), 500);
+        },
+    });
+}
+</script>
 
 </body>
 </html>

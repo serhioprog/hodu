@@ -182,6 +182,14 @@ async def _create_pending_cluster(
     )
     session.add(new_cluster)
 
+    # CRITICAL: flush parent cluster row to DB BEFORE inserting junction
+    # rows. Without this, the raw SQL INSERT below fails with FK violation
+    # ("Key (cluster_id)=... is not present in table property_clusters")
+    # because session.add() only stages the row in memory — it's not visible
+    # to FK constraints until flushed. flush() sends the INSERT without
+    # committing; the surrounding transaction still owns everything.
+    await session.flush()
+
     # 2. INSERT cluster_v2_members rows (junction).
     # Engine v1 uses Property.cluster_id FK exclusively. Engine v2 uses
     # this junction so a property can be in BOTH a v1 cluster AND a v2

@@ -47,7 +47,7 @@ services:
     # (note: APScheduler in scheduler.py is process-singleton; bug #48
     # tracks the future need to move scheduler to its own container or
     # use a DB-backed job store when workers > 1).
-    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
     volumes:

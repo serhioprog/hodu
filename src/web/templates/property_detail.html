@@ -72,7 +72,7 @@
             </div>
         </div>
 
-        {% if current_user and current_user.is_admin %}
+        {% if current_user and (current_user.is_admin or current_user.is_reviewer) %}
         <div class="text-end mb-2">
             <span class="badge bg-light text-dark border p-2 px-3" style="font-size:15px;">hodu ID: {{ (prop.id | string)[:6] | upper }}</span>
         </div>
@@ -200,7 +200,7 @@
 
                 <div class="sidebar-price">{{ prop.price | euro }}</div>
 
-                {% if current_user and current_user.is_admin %}
+                {% if current_user and (current_user.is_admin or current_user.is_reviewer) %}
                     <div class="mb-4 small text-muted">
                         <div class="mb-1">Source: <span class="fw-bold text-dark">{{ prop.source_domain }}</span></div>
                         <div class="mb-1">Source ID: <span class="fw-bold text-dark">{{ prop.site_property_id }}</span></div>

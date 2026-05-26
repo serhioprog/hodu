@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>hodu. | Properties</title>
+    <title>hodu. | Updates</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
 
@@ -33,6 +33,7 @@
         .badge-new   { background: #e6f4ea; color: #1e7e34; font-weight: 700; border: 1px solid #cce8d6; }
         .badge-price { background: #fce8e6; color: #d93025; font-weight: 700; border: 1px solid #fad2cf; }
         .badge-active{ background: #fff;    color: #5f6368; font-weight: 600; border: 1px solid #dadce0; }
+        .badge-delisted { background: #f3e8ff; color: #7c3aed; font-weight: 700; border: 1px solid #ddd6fe; }
 
         .filter-panel { background: #fff; padding: 18px 20px 6px 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.03); border: 1px solid #ebebeb; }
         .filter-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #888; font-weight: 700; margin-bottom: 6px; display: block; }
@@ -56,9 +57,9 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
             <ul class="dropdown-menu dropdown-menu-end dropdown-menu-custom">
-                <li><a class="dropdown-item" href="/daily-report">Dashboard</a></li>
-                {% if current_user and current_user.is_admin %}
-                <li><a class="dropdown-item" href="/admin">Control Panel</a></li>
+                <li><a class="dropdown-item" href="/daily-report">Refresh page</a></li>
+                {% if current_user and (current_user.is_admin or current_user.is_reviewer) %}
+                <li><a class="dropdown-item" href="/admin">System</a></li>
                 {% endif %}
                 <li><hr class="dropdown-divider"></li>
                 <li>
@@ -111,8 +112,8 @@
                     <select id="filterStatus" class="form-select form-select-sm">
                         <option value="">All</option>
                         <option value="NEW">New</option>
-                        <option value="PRICE DROP">Drop</option>
-                        <option value="ACTIVE">Active</option>
+                        <option value="PRICE DROP">Price Drop</option>
+                        <option value="DELISTED">Delisted</option>
                     </select>
                 </div>
             </div>
@@ -156,6 +157,8 @@
                                 <span class="badge badge-new">NEW</span>
                             {% elif st == 'PRICE_CHANGED' %}
                                 <span class="badge badge-price">PRICE DROP</span>
+                            {% elif st == 'DELISTED' %}
+                                <span class="badge badge-delisted">DELISTED</span>
                             {% else %}
                                 <span class="badge badge-active">ACTIVE</span>
                             {% endif %}
