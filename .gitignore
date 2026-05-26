@@ -55,3 +55,9 @@ logs/
 mintty.*
 venv/
 ~$*.xlsx
+
+# Sprint 8 cleanup
+cloudflared.exe
+*.sql.bak
+hodu_backup_*.sql
+"C*backupshodu*"
