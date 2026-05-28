@@ -152,14 +152,27 @@ async def update_schedule() -> None:
     without a service restart.
     """
     try:
-        sync_time   = await get_setting("sync_time",   "00:01")
-        report_time = await get_setting("report_time", "09:30")
+        # Legacy fallbacks — used ONCE on first read of each per-day key to
+        # auto-seed the new model. After that, per-day rows are authoritative.
+        legacy_sync_time   = await get_setting("sync_time",   "00:01")
+        legacy_sync_days   = await get_setting("sync_days",   "mon,tue,wed,thu,fri,sat,sun")
+        legacy_report_time = await get_setting("report_time", "09:30")
+        legacy_report_days = await get_setting("report_days", "mon,tue,wed,thu,fri,sat,sun")
 
-        h_sync, m_sync = map(int, sync_time.split(":"))
-        h_rep,  m_rep  = map(int, report_time.split(":"))
+        sync_map   = await _schedule_per_day(
+            "sync_time", "job_sync", job_parsing,
+            legacy_sync_time, legacy_sync_days,
+        )
+        report_map = await _schedule_per_day(
+            "report_time", "job_report", job_email_report,
+            legacy_report_time, legacy_report_days,
+        )
 
-        _upsert_job("job_sync",  job_parsing,      CronTrigger(hour=h_sync, minute=m_sync))
-        _upsert_job("job_report", job_email_report, CronTrigger(hour=h_rep,  minute=m_rep))
+        # Cleanup: remove single-job leftovers from the previous (day-mask)
+        # design. New design uses _mon/_tue/... suffixes.
+        for legacy_id in ("job_sync", "job_report"):
+            if scheduler.get_job(legacy_id):
+                scheduler.remove_job(legacy_id)
 
         # Weekly funnel probe — Mondays 04:00 Europe/Athens.
         # Day-of-week 0=Monday in APScheduler. Using a fixed cron rather
@@ -177,11 +190,83 @@ async def update_schedule() -> None:
                 misfire_grace_time=600,  # Bug #27
             )
 
-        logger.info(f"🔄 schedule refreshed: sync={sync_time} report={report_time} probe=Mon 04:00")
+        sync_str   = ", ".join(f"{d}={t}" for d, t in sync_map.items())   or "OFF"
+        report_str = ", ".join(f"{d}={t}" for d, t in report_map.items()) or "OFF"
+        logger.info(
+            f"🔄 schedule refreshed: sync=[{sync_str}] · "
+            f"report=[{report_str}] · probe=Mon 04:00"
+        )
 
     except Exception as e:
         logger.error(f"schedule refresh failed (keeping previous): {e}")
 
+# APScheduler accepts CSV like "mon,wed,fri". We accept any case/whitespace
+# and silently drop unknown tokens. Empty result -> job is disabled (caller
+# removes the job rather than passing day_of_week="" which APScheduler rejects).
+_VALID_DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+def _normalize_days(raw: str) -> str:
+    """CSV of weekday aliases -> validated CSV, or '' if nothing valid."""
+    if not raw:
+        return ""
+    seen: set = set()
+    out: list = []
+    for tok in raw.split(","):
+        d = tok.strip().lower()
+        if d in _VALID_DAYS and d not in seen:
+            seen.add(d)
+            out.append(d)
+    # preserve canonical Mon-Sun order for readable logs
+    return ",".join(d for d in _VALID_DAYS if d in seen)
+
+def _parse_hhmm(value: str) -> tuple[int, int] | None:
+    """'HH:MM' -> (h, m); returns None for empty/invalid (= disabled)."""
+    if not value or ":" not in value:
+        return None
+    try:
+        h_s, m_s = value.split(":", 1)
+        h, m = int(h_s), int(m_s)
+        if 0 <= h <= 23 and 0 <= m <= 59:
+            return (h, m)
+    except ValueError:
+        pass
+    return None
+
+
+async def _schedule_per_day(
+    key_prefix: str, job_prefix: str, fn,
+    legacy_time: str, legacy_days: str,
+) -> dict[str, str]:
+    """
+    Per-day-of-week scheduling. Reads SystemSetting rows
+    `{key_prefix}_{mon|tue|...}` — value 'HH:MM' = run that day at that time,
+    empty = disabled. Schedules one CronTrigger job per enabled day:
+    `{job_prefix}_{day}`. Removes the job for any disabled day.
+
+    Migration: on the FIRST read of each per-day key the row doesn't exist,
+    so get_setting() seeds it from legacy_time iff the day was in
+    legacy_days; otherwise seeds it empty (disabled). After that the per-day
+    rows are authoritative — legacy_time/legacy_days are no longer consulted.
+
+    Returns {day: 'HH:MM'} of currently-enabled days for logging.
+    """
+    legacy_mask = _normalize_days(legacy_days).split(",") if _normalize_days(legacy_days) else []
+    legacy_set = set(legacy_mask)
+    enabled: dict[str, str] = {}
+    for day in _VALID_DAYS:
+        legacy_default = legacy_time if day in legacy_set else ""
+        time_str = (await get_setting(f"{key_prefix}_{day}", legacy_default)).strip()
+        job_id = f"{job_prefix}_{day}"
+        parsed = _parse_hhmm(time_str)
+        if parsed is None:
+            if scheduler.get_job(job_id):
+                scheduler.remove_job(job_id)
+            continue
+        h, m = parsed
+        _upsert_job(job_id, fn, CronTrigger(day_of_week=day, hour=h, minute=m))
+        enabled[day] = time_str
+    return enabled
 
 def _upsert_job(job_id: str, func, trigger, *, misfire_grace_time: int = 600) -> None:
     """Bug #27: APScheduler's default behaviour drops missed jobs entirely.

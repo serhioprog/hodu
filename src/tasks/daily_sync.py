@@ -54,6 +54,9 @@ from src.scrapers.sithonia_properties import SithoniaPropertiesScraper
 #from src.scrapers.kanata_realestate import KanataRealEstateScraper
 from src.scrapers.edma_estate import EdmaEstateScraper
 from src.scrapers.greximo import GreximoScraper
+from src.scrapers.greece_invest import GreeceInvestScraper
+from src.scrapers.halkidiki_imoti import HalkidikiImotiScraper
+from src.scrapers.sani_realestate import SaniRealestateScraper
 
 
 # --- DB & Core ---
@@ -301,6 +304,9 @@ async def _run_scrapers(global_stats: Dict[str, int]) -> List[DomainSyncReport]:
         EdmaEstateScraper(),
         GrekodomDevelopmentScraper(),
         GreximoScraper(),
+        GreeceInvestScraper(),
+        HalkidikiImotiScraper(),
+        SaniRealestateScraper(),
     ]
 
     domain_reports: List[DomainSyncReport] = []

@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import collections
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from loguru import logger
 from sqlalchemy import text, select, update, func, delete
@@ -50,7 +50,10 @@ _PAIR_SQL = text("""
 WITH eligible AS (
     SELECT
         id, embedding, image_phashes, source_domain, cluster_id,
-        price, size_sqm, description, content_hash, category
+        price, size_sqm, description, content_hash, category,
+        -- V1-AttributeGate (Sprint 9): structured attribute fields used
+        -- by _check_pair_attributes for numeric tolerance checks.
+        land_size_sqm, bedrooms, bathrooms, year_built
     FROM properties
     WHERE
         embedding IS NOT NULL
@@ -68,11 +71,24 @@ SELECT
     p2.image_phashes AS b_phashes,
     p1.category      AS a_category,
     p2.category      AS b_category,
+    -- V1-AttributeGate (Sprint 9): per-side structured attributes
+    p1.size_sqm      AS a_size_sqm,
+    p2.size_sqm      AS b_size_sqm,
+    p1.land_size_sqm AS a_land_size_sqm,
+    p2.land_size_sqm AS b_land_size_sqm,
+    p1.bedrooms      AS a_bedrooms,
+    p2.bedrooms      AS b_bedrooms,
+    p1.bathrooms     AS a_bathrooms,
+    p2.bathrooms     AS b_bathrooms,
+    p1.year_built    AS a_year_built,
+    p2.year_built    AS b_year_built,
     1 - (p1.embedding <=> p2.embedding) AS similarity
 FROM eligible p1
 CROSS JOIN LATERAL (
     SELECT id, embedding, image_phashes, source_domain, cluster_id,
-           price, size_sqm, content_hash, category
+           price, size_sqm, content_hash, category,
+           -- V1-AttributeGate (Sprint 9): forward attributes through LATERAL
+           land_size_sqm, bedrooms, bathrooms, year_built
     FROM eligible p2_inner
     WHERE
         p2_inner.id > p1.id
@@ -305,6 +321,9 @@ class InternalDuplicateDetector:
     def __init__(self) -> None:
         # Vision client is lazy: instantiated only if enabled at run time.
         self._vision: Optional[VisionTiebreaker] = None
+        # V1-AttributeGate (Sprint 9): populated by _classify_pairs each run
+        self._last_attribute_rejected: int = 0
+        self._last_attribute_rejected_by_reason: Dict[str, int] = {}
 
     async def run(self, session: AsyncSession) -> Dict[str, int]:
         stats: Dict[str, int] = {
@@ -325,6 +344,7 @@ class InternalDuplicateDetector:
             "component_errors":    0,   # V1-Robust-1: per-component persist failures
             "gray_zone_clusters":  0,   # V1-Recall-1: components persisted only due to pending-edge union
             "proposals_created":   0,   # V1-AdminAuthority: candidate-member proposals for APPROVED clusters
+            "attribute_rejected":  0,   # V1-AttributeGate (Sprint 9): pairs rejected by structured + photo gate
         }
 
         stats["sold_cleaned"] = await self._release_sold_clusters(session)
@@ -369,6 +389,9 @@ class InternalDuplicateDetector:
 
         # --- Levels 2+3: pre-Vision classification ------------------------
         edges, stats["classify_errors"] = self._classify_pairs(rows, stock_phashes)
+        # V1-AttributeGate (Sprint 9): surface attribute-rejection count in
+        # final stats. Per-reason breakdown is in the INFO log line.
+        stats["attribute_rejected"] = self._last_attribute_rejected
         pending_count = sum(1 for e in edges if e.verdict == "merge_pending")
         logger.info(
             f"[Matcher] pre-Vision: "
@@ -390,11 +413,18 @@ class InternalDuplicateDetector:
                 continue
             dsu.add(edge.a_id)
             dsu.add(edge.b_id)
-            if edge.verdict in ("merge_approved", "merge_pending"):
-                # V1-Recall-1: include pending edges so pure gray-zone
-                # components still surface as PENDING clusters for admin
-                # review (otherwise they'd be lost as singletons and the
-                # gray-zone signal would silently disappear).
+            # V1-Recall-1 REVERTED (Sprint 8 hotfix): pending union created
+            # 44 false-positive clusters in production. Halkidiki villas have
+            # similar descriptions (cosine 0.92-0.96 common between unrelated
+            # properties); without companion photo evidence, gray-zone signal
+            # is too noisy. Restored old behavior: only merge_approved unions
+            # form clusters. Gray-zone pairs remain in stats for visibility
+            # (vision_resolved tracks Vision arbitration of top pairs) but
+            # don't form components.
+            # Sprint 9 candidate: design tighter gray-zone admission criteria
+            # (e.g. require phash_matches >= 1, OR pair-survives-Vision, OR
+            # higher cosine threshold like > 0.96).
+            if edge.verdict == "merge_approved":
                 dsu.union(edge.a_id, edge.b_id)
             edges_by_pair[(edge.a_id, edge.b_id)] = edge
 
@@ -587,6 +617,77 @@ class InternalDuplicateDetector:
             {"min_count": settings.PHASH_STOCK_MIN_PROPS},
         )).fetchall()
         return {r[0] for r in rows if r[0]}
+    
+    # =============================================================
+    # V1-AttributeGate (Sprint 9) — structured compatibility check
+    # =============================================================
+    def _check_pair_attributes(
+        self,
+        row: Any,
+        phash_matches: int,
+        stock_phashes: Set[str],
+    ) -> Tuple[bool, Optional[str]]:
+        """Multi-signal compatibility check for a candidate pair.
+
+        Embedding similarity measures topical relatedness, NOT identity.
+        Two unrelated Halkidiki villas easily score cosine > 0.92 because
+        they share vocabulary ("villa, pool, A/C, sea view"). This gate
+        uses structured attributes that are HARD to vary on the SAME
+        physical property — if any fails, reject the pair.
+
+        Per-attribute tolerances:
+        - Continuous metric (sqm): percentage tolerance (measurement variance)
+        - Discrete counts (beds, baths): absolute ±1 (counting convention)
+        - Year built: ±5 years (renovation reporting variance)
+        - Photo evidence: 0 matches with abundant photos on BOTH sides
+          is strong NEGATIVE signal (different physical objects).
+
+        NULL-tolerant: missing values skip that specific check (fail-open
+        for incomplete data — engine has been correct so far on these).
+
+        Returns (passed, reject_reason). reject_reason is a short slug
+        suitable for stats aggregation and INFO logging.
+        """
+        # === Continuous percentage-based ===
+        if row.a_size_sqm and row.b_size_sqm:
+            diff = abs(row.a_size_sqm - row.b_size_sqm) / max(row.a_size_sqm, row.b_size_sqm)
+            if diff > 0.15:
+                return False, "size_sqm_diff>15%"
+
+        if row.a_land_size_sqm and row.b_land_size_sqm:
+            diff = abs(row.a_land_size_sqm - row.b_land_size_sqm) / max(row.a_land_size_sqm, row.b_land_size_sqm)
+            if diff > 0.10:
+                return False, "land_size_diff>10%"
+
+        # === Discrete count-based (absolute ±1) ===
+        if row.a_bedrooms is not None and row.b_bedrooms is not None:
+            if abs(row.a_bedrooms - row.b_bedrooms) > 1:
+                return False, "bedrooms_diff>1"
+
+        if row.a_bathrooms is not None and row.b_bathrooms is not None:
+            if abs(row.a_bathrooms - row.b_bathrooms) > 1:
+                return False, "bathrooms_diff>1"
+
+        # === Year built (renovation tolerance ±5 years) ===
+        if row.a_year_built and row.b_year_built:
+            if abs(row.a_year_built - row.b_year_built) > 5:
+                return False, "year_built_diff>5y"
+
+        # === Photo evidence — NEGATIVE signal ===
+        # 0 matches with abundant non-stock photos on BOTH sides = strong reject.
+        # Requires ≥4 non-stock photos per side to be reliable; thin photo
+        # sets give too-weak signal and are treated as neutral.
+        a_non_stock = [h for h in (row.a_phashes or []) if h not in stock_phashes]
+        b_non_stock = [h for h in (row.b_phashes or []) if h not in stock_phashes]
+        PHOTO_MIN_FOR_NEGATIVE = 4
+        if (len(a_non_stock) >= PHOTO_MIN_FOR_NEGATIVE
+            and len(b_non_stock) >= PHOTO_MIN_FOR_NEGATIVE
+            and phash_matches == 0):
+            return False, "photo_evidence_zero"
+
+        return True, None
+
+    # =============================================================
 
     # =============================================================
     # Levels 2+3: pre-Vision classification
@@ -606,6 +707,9 @@ class InternalDuplicateDetector:
         edges: List[_EdgeMeta] = []
         errors = 0
         category_skipped = 0
+        # V1-AttributeGate (Sprint 9): track pairs rejected by attribute gate
+        attribute_rejected = 0
+        attribute_rejected_by_reason: Dict[str, int] = {}
         total = 0
         for row in rows:
             total += 1
@@ -628,7 +732,26 @@ class InternalDuplicateDetector:
                 phash_matches = PHashService.count_matching(
                     a_phashes, b_phashes, common_to_ignore=stock_phashes
                 )
-
+                # V1-AttributeGate (Sprint 9): structured + photo evidence
+                # check. Rejects pairs where physical attributes don't match
+                # OR where abundant photos on both sides share zero hashes.
+                # Applied AFTER pHash compute so photo-evidence rule can use
+                # phash_matches; AFTER category gate to avoid wasted compute
+                # on cross-family rejects.
+                passed, reject_reason = self._check_pair_attributes(
+                    row, phash_matches, stock_phashes
+                )
+                if not passed:
+                    attribute_rejected += 1
+                    attribute_rejected_by_reason[reject_reason] = \
+                        attribute_rejected_by_reason.get(reject_reason, 0) + 1
+                    if attribute_rejected_by_reason[reject_reason] <= 5:
+                        # Log first 5 examples per reason for observability
+                        logger.info(
+                            f"[Matcher/V1-AttributeGate] reject {a_id[:8]}<>{b_id[:8]}: "
+                            f"{reject_reason} (sim={similarity:.3f})"
+                        )
+                    continue
                 if similarity > settings.SIM_AUTO_MERGE:
                     verdict = "merge_approved"
                 elif phash_matches >= settings.PHASH_MIN_MATCHES:
@@ -668,6 +791,20 @@ class InternalDuplicateDetector:
                 f"[Matcher] _classify_pairs: {category_skipped}/{total} pairs "
                 f"skipped by category mismatch (V1-Precision-1)"
             )
+        if attribute_rejected:
+            reasons_str = ", ".join(
+                f"{r}={n}" for r, n in sorted(
+                    attribute_rejected_by_reason.items(),
+                    key=lambda x: -x[1]
+                )
+            )
+            logger.info(
+                f"[Matcher/V1-AttributeGate] {attribute_rejected}/{total} pairs "
+                f"rejected by attribute gate. Breakdown: {reasons_str}"
+            )
+        # Expose for run() to surface in final stats dict
+        self._last_attribute_rejected = attribute_rejected
+        self._last_attribute_rejected_by_reason = dict(attribute_rejected_by_reason)
         return edges, errors
 
     # =============================================================
@@ -716,11 +853,14 @@ class InternalDuplicateDetector:
         # edges being unioned (no approved edges). Track for observability —
         # this measures how much gray-zone signal V1-Recall-1 recovers vs the
         # pre-fix behavior where such components were silently dropped.
-        all_pending = bool(edges_in_comp) and all(
-            e.verdict == "merge_pending" for e in edges_in_comp
-        )
-        if all_pending:
-            out["gray_zone_clusters"] = 1
+        # V1-Recall-1 reverted in Sprint 8 hotfix — gray-zone components
+        # no longer formed. Counter kept in stats init for backwards-compat
+        # logging but always increments to 0.
+        # all_pending = bool(edges_in_comp) and all(
+        #     e.verdict == "merge_pending" for e in edges_in_comp
+        # )
+        # if all_pending:
+        #     out["gray_zone_clusters"] = 1
 
         existing_cluster_ids = {p.cluster_id for p in props if p.cluster_id}
         locked_cluster: Optional[PropertyCluster] = None
@@ -805,7 +945,7 @@ class InternalDuplicateDetector:
                                phash_matches, evidence_pairs)
                             VALUES
                               (:cluster_id, :property_id, :ai_score,
-                               :phash_matches, :evidence::jsonb)
+                               :phash_matches, CAST(:evidence AS jsonb))
                             ON CONFLICT (cluster_id, property_id)
                               WHERE status = 'PENDING'
                               DO NOTHING

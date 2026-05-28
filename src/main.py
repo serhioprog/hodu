@@ -9,7 +9,7 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import FastAPI, Form, HTTPException, Query, Request, BackgroundTasks
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from loguru import logger
@@ -386,12 +386,33 @@ async def admin_dashboard(request: Request):
             sync_time = sync_res.scalars().first()
             repo_time = repo_res.scalars().first()
 
+            # Sprint 9: per-day-of-week schedule. 14 SystemSetting rows
+            # (sync_time_{mon..sun} + report_time_{mon..sun}). Value "HH:MM"
+            # = enabled, "" = disabled for that day. Rows are auto-seeded by
+            # scheduler's _schedule_per_day on first boot from legacy
+            # sync_time/sync_days/report_time/report_days. Single batched
+            # query — 14 rows max, no perf concern.
+            _DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+            _per_day_rows = (await session.execute(
+                select(SystemSetting).where(
+                    SystemSetting.key.in_(
+                        [f"sync_time_{d}"   for d in _DAYS]
+                        + [f"report_time_{d}" for d in _DAYS]
+                    )
+                )
+            )).scalars().all()
+            _per_day = {r.key: r.value for r in _per_day_rows}
+            sync_per_day   = {d: _per_day.get(f"sync_time_{d}",   "") for d in _DAYS}
+            report_per_day = {d: _per_day.get(f"report_time_{d}", "") for d in _DAYS}
+
             users = (await session.execute(
                 select(Agent).order_by(Agent.created_at.desc())
             )).scalars().all()
         else:
             sync_time = None
             repo_time = None
+            sync_per_day = {}
+            report_per_day = {}
             users = []
 
         # Sprint 7 Task A: Properties теперь грузятся через /api/admin/properties
@@ -690,6 +711,8 @@ async def admin_dashboard(request: Request):
                 dissolved_feedbacks_v2=dissolved_feedbacks_v2,
                 sync_time=sync_time.value if sync_time else "00:01",
                 report_time=repo_time.value if repo_time else "09:30",
+                sync_per_day=sync_per_day,
+                report_per_day=report_per_day,
                 scraper_logs=scraper_logs,
                 email_logs=email_logs,
             ),
@@ -888,29 +911,74 @@ async def send_magic_link_endpoint(user_id: str, request: Request):
         "error":  result["error"],
     }
 
+# Sprint 9: per-day-of-week schedule helpers
+_SETTINGS_DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+def _valid_hhmm(s: str) -> bool:
+    """'HH:MM' validator — strict zero-padded form."""
+    if not s or ":" not in s:
+        return False
+    h_s, _, m_s = s.partition(":")
+    if not (h_s.isdigit() and m_s.isdigit() and len(h_s) == 2 and len(m_s) == 2):
+        return False
+    h, m = int(h_s), int(m_s)
+    return 0 <= h <= 23 and 0 <= m <= 59
+
+
 @app.post("/admin/settings/update")
-async def update_settings(
-    request: Request,
-    sync_time: str = Form(...),
-    report_time: str = Form(...),
-):
+async def update_settings(request: Request):
+    """
+    Sprint 9: per-day-of-week schedule. Form posts 28 fields:
+        sync_enabled_{day}   — checkbox (only present when checked) × 7 days
+        sync_time_{day}      — HH:MM input × 7 days
+        report_enabled_{day} — same for email report
+        report_time_{day}    — same
+
+    A day is enabled iff its checkbox is present AND its time validates as
+    HH:MM. Otherwise we save "" so the scheduler removes that day's job.
+    Old single-row sync_time/report_time settings are left untouched (no
+    longer read by scheduler).
+
+    Returns JSON for the AJAX-submit frontend; triggers update_schedule()
+    immediately so cron triggers refresh before the toast appears (instead
+    of waiting up to 10 min for the periodic tick).
+    """
+    from src.tasks.scheduler import update_schedule as _refresh_schedule
+
     async with async_session_maker() as session:
         admin = await get_current_admin(request, session)
         if not admin:
             raise HTTPException(status_code=403)
 
-        for key, value in (("sync_time", sync_time), ("report_time", report_time)):
-            res = await session.execute(
-                select(SystemSetting).where(SystemSetting.key == key)
-            )
-            setting = res.scalars().first()
-            if setting:
-                setting.value = value
-            else:
-                session.add(SystemSetting(key=key, value=value))
+        form = await request.form()
+
+        for day in _SETTINGS_DAYS:
+            for prefix in ("sync", "report"):
+                enabled  = form.get(f"{prefix}_enabled_{day}") is not None
+                raw_time = (form.get(f"{prefix}_time_{day}") or "").strip()
+                final    = raw_time if (enabled and _valid_hhmm(raw_time)) else ""
+
+                key = f"{prefix}_time_{day}"
+                res = await session.execute(
+                    select(SystemSetting).where(SystemSetting.key == key)
+                )
+                setting = res.scalars().first()
+                if setting:
+                    setting.value = final
+                else:
+                    session.add(SystemSetting(key=key, value=final))
+
         await session.commit()
 
-    return RedirectResponse(url="/admin", status_code=303)
+    # Immediate APScheduler refresh — admin sees the new schedule in the
+    # next log line, not 10 min later (the periodic update_schedule tick).
+    try:
+        await _refresh_schedule()
+    except Exception as e:
+        logger.error(f"[admin/settings/update] post-save schedule refresh failed: {e}")
+
+    return JSONResponse({"status": "ok"})
 
 async def _record_ai_feedback(session: AsyncSession, p1: Property, p2: Property) -> None:
     """Записывает отвергнутую пару в БД (используя ON CONFLICT DO UPDATE)"""

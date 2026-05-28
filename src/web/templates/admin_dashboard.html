@@ -348,6 +348,95 @@
             background: #fff0f2 !important;
         }
 
+
+        /* === Weekday picker — toggle pills for sync/report day-of-week ===
+        Same soft-pink active state as .user-role-tabs / engine pills. */
+        .weekday-picker {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .weekday-pill {
+            cursor: pointer;
+            padding: 5px 12px;
+            border: 1px solid #fff0f2;
+            border-radius: 6px;
+            color: #555;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.15s ease;
+            margin: 0;
+            background: white;
+            user-select: none;
+        }
+        .weekday-pill:hover { background: #fff0f2; color: #ff385c; }
+        .weekday-pill.active { background: #fff0f2; color: #ff385c; }
+        .weekday-pill input { display: none; }
+        .weekday-warning {
+            font-size: 11px;
+            color: #DC2626;
+            margin-top: 4px;
+            display: none;
+        }
+        .weekday-warning.visible { display: block; }
+
+        /* === Schedule per-day rows + Save toast === */
+        .day-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 14px;
+            border: 1px solid #ebebeb;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            background: white;
+            transition: all 0.15s ease;
+        }
+        .day-row.enabled {
+            border-color: #fff0f2;
+            background: #fffafb;
+        }
+        .day-toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            margin: 0;
+            flex: 1;
+            user-select: none;
+        }
+        .day-toggle input[type="checkbox"] {
+            width: 16px; height: 16px;
+            accent-color: #ff385c;
+            cursor: pointer;
+        }
+        .day-name { font-weight: 600; font-size: 14px; color: #9ca3af; }
+        .day-row.enabled .day-name { color: #222; }
+        .day-time {
+            width: 100px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-size: 13px;
+            font-family: inherit;
+        }
+        .day-time:disabled { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
+
+        #scheduleToast {
+            position: fixed; bottom: 24px; right: 24px;
+            background: #1F2937; color: white;
+            padding: 12px 20px; border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            font-weight: 600; font-size: 14px;
+            transform: translateY(100px); opacity: 0;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            z-index: 9999;
+            display: flex; align-items: center; gap: 8px;
+        }
+        #scheduleToast.show { transform: translateY(0); opacity: 1; }
+        #scheduleToast.success { background: #059669; }
+        #scheduleToast.error   { background: #DC2626; }
+
         /* === Cluster badges (Sprint 7 Task B) ===========================
         Используются в Properties table колонка "Duplicates" и в любом
         другом месте где нужно показать что property в кластере. Клик —
@@ -879,28 +968,62 @@ window.IS_ADMIN = {{ current_user.is_admin | tojson }};
                     
                     <!-- Вкладка CRON -->
                     <div class="tab-pane fade show active" id="pills-cron" role="tabpanel">
+                    {% set _all_days = [('mon','Monday'),('tue','Tuesday'),('wed','Wednesday'),('thu','Thursday'),('fri','Friday'),('sat','Saturday'),('sun','Sunday')] %}
+                    {% set _sync_pd = sync_per_day or {} %}
+                    {% set _rep_pd  = report_per_day or {} %}
+
+                    <form id="scheduleForm" action="/admin/settings/update" method="post">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
                         <div class="row">
-                            <div class="col-md-5">
+                            <!-- ===== Sync schedule ===== -->
+                            <div class="col-md-6">
                                 <div class="filter-panel p-4">
-                                    <h6 class="fw-bold mb-3">Master Data Management Automation Scheduler</h6>
-                                    <form action="/admin/settings/update" method="post">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                        <div class="mb-4">
-                                            <label class="form-label text-muted small fw-bold">Daily scrapers start time</label>
-                                            <input type="time" name="sync_time" class="form-control bg-light" value="{{ sync_time }}">
-                                            <div class="form-text small">Set the time when all scrapers will start working</div>
-                                        </div>
-                                        <div class="mb-4">
-                                            <label class="form-label text-muted small fw-bold">Daily email report delivery time</label>
-                                            <input type="time" name="report_time" class="form-control bg-light" value="{{ report_time }}">
-                                            <div class="form-text small">Set the time for sending daily reports to agents</div>
-                                        </div>
-                                        <button type="submit" class="btn btn-hodu-main w-100 fw-bold shadow-sm">Save settings</button>
-                                    </form>
+                                    <h6 class="fw-bold mb-1">Scrapers — daily run</h6>
+                                    <p class="text-muted small mb-3">Set a different time per weekday. Uncheck to disable that day.</p>
+
+                                    {% for d, lbl in _all_days %}
+                                    {% set t = _sync_pd.get(d, '') %}
+                                    <div class="day-row {% if t %}enabled{% endif %}">
+                                        <label class="day-toggle">
+                                            <input type="checkbox" name="sync_enabled_{{ d }}" {% if t %}checked{% endif %}>
+                                            <span class="day-name">{{ lbl }}</span>
+                                        </label>
+                                        <input type="time" name="sync_time_{{ d }}"
+                                            value="{{ t or '00:01' }}"
+                                            class="day-time" {% if not t %}disabled{% endif %}>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+
+                            <!-- ===== Report schedule ===== -->
+                            <div class="col-md-6">
+                                <div class="filter-panel p-4">
+                                    <h6 class="fw-bold mb-1">Email reports — delivery</h6>
+                                    <p class="text-muted small mb-3">Daily reports go out only on days you enable below.</p>
+
+                                    {% for d, lbl in _all_days %}
+                                    {% set t = _rep_pd.get(d, '') %}
+                                    <div class="day-row {% if t %}enabled{% endif %}">
+                                        <label class="day-toggle">
+                                            <input type="checkbox" name="report_enabled_{{ d }}" {% if t %}checked{% endif %}>
+                                            <span class="day-name">{{ lbl }}</span>
+                                        </label>
+                                        <input type="time" name="report_time_{{ d }}"
+                                            value="{{ t or '09:30' }}"
+                                            class="day-time" {% if not t %}disabled{% endif %}>
+                                    </div>
+                                    {% endfor %}
                                 </div>
                             </div>
                         </div>
-                    </div>
+
+                        <div class="d-flex justify-content-end mt-3">
+                            <button type="submit" class="btn btn-hodu-main fw-bold shadow-sm px-5">Save settings</button>
+                        </div>
+                    </form>
+                </div>
 
                     <!-- Вкладка SCRAPER LOGS -->
                     <div class="tab-pane fade" id="pills-scraper" role="tabpanel">
@@ -2303,6 +2426,45 @@ document.addEventListener('change', function(e) {
 {% include "partials/cluster_manage_modal.html" %}
 
 <script>
+// =====================================================================
+// Sprint 9 BUGFIX — stacked modal z-index
+// =====================================================================
+// When a second modal opens while a first is still open (feedback modal
+// opening from inside cluster manage modal on Reject/Dissolve or Remove
+// member), Bootstrap gives both the same z-index. The modal later in DOM
+// wins, so the feedback modal rendered BEHIND the manage modal. This
+// handler bumps each newly-shown modal (and its backdrop) above any
+// already-open modal, and re-applies the body scroll-lock when a stacked
+// modal closes (Bootstrap clears it on any modal close, which would
+// unlock scroll while a modal is still open).
+document.addEventListener('show.bs.modal', function (event) {
+    const openModals = document.querySelectorAll('.modal.show').length;
+    if (openModals > 0) {
+        const zIndex = 1055 + (openModals * 20);
+        event.target.style.zIndex = zIndex;
+        // Backdrop is appended after this event fires; bump it on the
+        // next tick so the stacked modal isn't dimmed by its own backdrop.
+        setTimeout(() => {
+            const backdrops = document.querySelectorAll('.modal-backdrop:not(.stacked-backdrop)');
+            const last = backdrops[backdrops.length - 1];
+            if (last) {
+                last.style.zIndex = zIndex - 10;
+                last.classList.add('stacked-backdrop');
+            }
+        }, 0);
+    }
+});
+
+document.addEventListener('hidden.bs.modal', function () {
+    // If any modal remains open, Bootstrap has already stripped the body
+    // scroll-lock — restore it so the remaining modal stays locked/padded.
+    if (document.querySelectorAll('.modal.show').length > 0) {
+        document.body.classList.add('modal-open');
+    }
+});
+</script>
+
+<script>
 // ===================================================================
 // USER MODAL — Add + Manage (Sprint 7 Phase C iteration 2)
 // ===================================================================
@@ -2784,7 +2946,7 @@ function populateModalFooter() {
             <button type="button" class="btn fw-bold ms-2"
                     onclick="rejectClusterFromModal('${c.id}')"
                     style="background:#fff0f2;color:#ff385c;border:1px solid #ffd1d8;border-radius:8px;padding:8px 16px;">
-                ✕ Reject (Dissolve)
+                ✕ Reject
             </button>
             <button type="button" class="btn fw-bold"
                     onclick="approveClusterFromModal('${c.id}')"
@@ -3056,6 +3218,89 @@ function rejectProposal(proposalId) {
         },
     });
 }
+</script>
+
+<script>
+// Weekday picker — toggle pill active state on checkbox change,
+// show warning if all days unchecked (job becomes disabled).
+document.querySelectorAll('.weekday-picker').forEach(picker => {
+    const warning = document.querySelector(
+        `.weekday-warning[data-warning="${picker.dataset.picker}"]`
+    );
+    const sync = () => {
+        let anyChecked = false;
+        picker.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.parentElement.classList.toggle('active', cb.checked);
+            if (cb.checked) anyChecked = true;
+        });
+        if (warning) warning.classList.toggle('visible', !anyChecked);
+    };
+    picker.addEventListener('change', sync);
+    sync();  // initial state
+});
+</script>
+
+<script>
+// ===== Schedule UI — toggle/disable rows + AJAX save + toast =====
+(function() {
+    const form = document.getElementById('scheduleForm');
+    if (!form) return;
+
+    // Toggle day-row enabled state + enable/disable time input
+    form.querySelectorAll('.day-row').forEach(row => {
+        const cb = row.querySelector('input[type="checkbox"]');
+        const tm = row.querySelector('input[type="time"]');
+        const sync = () => {
+            row.classList.toggle('enabled', cb.checked);
+            tm.disabled = !cb.checked;
+        };
+        cb.addEventListener('change', sync);
+    });
+
+    function showToast(message, type) {
+        let toast = document.getElementById('scheduleToast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'scheduleToast';
+            document.body.appendChild(toast);
+        }
+        toast.className = type || 'success';
+        toast.innerHTML = `${type === 'error' ? '⚠' : '✓'} ${message}`;
+        // force reflow then add 'show' so transition plays
+        toast.offsetHeight;  // eslint-disable-line
+        toast.classList.add('show');
+        clearTimeout(toast._t);
+        toast._t = setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const btn = form.querySelector('button[type="submit"]');
+        const origText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Saving...';
+
+        try {
+            const csrfToken = form.querySelector('input[name="csrf_token"]').value;
+            const fd = new FormData(form);
+            const resp = await fetch(form.action, {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': csrfToken },
+                body: fd,
+            });
+            if (!resp.ok) {
+                const errBody = await resp.json().catch(() => ({}));
+                throw new Error(errBody.detail || `HTTP ${resp.status}`);
+            }
+            showToast('Schedule saved', 'success');
+        } catch (err) {
+            showToast(`Save failed: ${err.message}`, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = origText;
+        }
+    });
+})();
 </script>
 
 </body>

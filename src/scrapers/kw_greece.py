@@ -350,6 +350,13 @@ _LABEL_TO_FIELD: Dict[str, str] = {
     "glass":                 "_extra:glass_type",
     "glazed windows":        "_extra:glass_type",
     "frames":                "_extra:frames_type",
+    "swimming pool":     "_extra:swimming_pool",
+    "parking":           "_extra:parking",
+    "fireplaces":        "_extra:fireplaces_count",
+    "storage":           "_extra:storage",
+    "suitable for":      "_extra:suitable_for",
+    "unique features":   "_extra:unique_features",
+    "balconies (sq.m.)": "_extra:balconies_sqm",
 }
 
 
@@ -870,6 +877,20 @@ class KWGreeceScraper(EnrichmentMixin, BaseScraper):
         return links
 
     # ── Direct Playwright helper (bypass funnel for language cookie control) ──
+    async def _fetch_html_curl(self, url: str) -> str:
+        """Detail pages are server-rendered — fetch via curl_cffi with the
+        English cookie (2x faster than Playwright, no browser dependency).
+        Only listing pages (JS-rendered) need Stage 1 Playwright."""
+        from curl_cffi import requests as _cffi
+        def _get() -> str:
+            r = _cffi.get(
+                url, impersonate="chrome",
+                cookies={".AspNetCore.Culture": "c%3Den-US%7Cuic%3Den-US"},
+                headers={"Accept-Language": "en-US,en;q=0.9"},
+                timeout=20,
+            )
+            return r.text if r.status_code == 200 else ""
+        return await asyncio.to_thread(_get)
 
     async def _fetch_html_direct(
         self,
@@ -965,7 +986,7 @@ class KWGreeceScraper(EnrichmentMixin, BaseScraper):
           (Quality gate logged)
         """
         try:
-            html_text = await self._fetch_html_direct(url)
+            html_text = await self._fetch_html_curl(url)
         except Exception as exc:
             logger.error(
                 f"[{self.source_domain}] detail fetch failed for {url}: {exc!r}"
@@ -1384,6 +1405,7 @@ class KWGreeceScraper(EnrichmentMixin, BaseScraper):
         property description.
         """
         for selector in (
+            ".list-single-main-item_content",   # ← clean description body (verified)
             "section#sec3",
             ".description",
             "#sec3",

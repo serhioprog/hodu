@@ -36,6 +36,7 @@ Special considerations
 from __future__ import annotations
 
 import asyncio
+import random
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -331,7 +332,7 @@ class GrekodomDevelopmentScraper(EnrichmentMixin, BaseScraper):
             f"multiRegion={_REGION_ID_CHALKIDIKI}"
             f"&aim=1"
             f"&pricefrom={min_price}"
-            f"&sortFilter=100"
+            f"&sortFilter=0"   # 0 = stable/disjoint pagination; 100 = "recommended" (unstable, pages overlap)
             f"&page={page}"
         )
         return f"{_BASE_URL}{_LISTING_PATH}?{params}"
@@ -405,7 +406,7 @@ class GrekodomDevelopmentScraper(EnrichmentMixin, BaseScraper):
                 )
                 break
 
-            await asyncio.sleep(_INTER_PAGE_SLEEP_SEC)
+            await asyncio.sleep(_INTER_PAGE_SLEEP_SEC + random.uniform(2.0, 4.5))  # jitter: avoid IIS rate-limit on 49-page collect
 
         logger.info(
             f"[{self.source_domain}] Phase 1 завершён: {len(seeds)} URLs "
@@ -437,9 +438,18 @@ class GrekodomDevelopmentScraper(EnrichmentMixin, BaseScraper):
         if not site_id:
             return None
 
-        # Category from <h4 a> in .listing-title
+        # Category from <h4 a> in .listing-title.
+        # Title format: "{Type} {size} m² in {location}, Chalkidiki"
+        #   e.g. "Complex 1348 m² in Kassandra, Chalkidiki" → type "Complex"
+        # Extract the leading type = everything before the first digit.
         cat_link = card.css_first(".listing-title h4 a")
-        category_raw = _normalize_text(cat_link.text(strip=False)) if cat_link else ""
+        title_text = _normalize_text(cat_link.text(strip=False)) if cat_link else ""
+        _m_type = re.match(r"^(.*?)\s+\d", title_text)
+        if _m_type:
+            category_raw = _m_type.group(1).strip()
+        else:
+            # No size in title ("Land in Kassandra") — take words before " in "
+            category_raw = re.split(r"\s+in\s+", title_text, 1)[0].strip()
         category_norm = category_raw.lower()
 
         if category_norm not in _CATEGORY_FILTER:
@@ -549,8 +559,21 @@ class GrekodomDevelopmentScraper(EnrichmentMixin, BaseScraper):
                 extra["listing_title"] = title
 
         # ─── Price ──────────────────────────────────────────────────────────
-        price_node = parser.css_first(".property-pricing .property-price")
+        # .property-pricing = <div>850&nbsp;000 €</div> + <div class="sub-price">€/m²</div>
+        # Drop the sub-price child so only the main amount remains, then parse.
+        # (.listing-price is NOT used here — that class belongs to the "similar
+        #  properties" carousel at the page bottom, not the main object.)
+        price_node = parser.css_first(".property-pricing")
         if price_node:
+            # Drop €/m² sub-price AND any struck-through OLD price (<del>),
+            # so only the current/discounted amount remains. Without the
+            # <del> removal, discounted listings ('450 000 € 410 000 €')
+            # would parse the OLD price (450000) instead of the new (410000).
+            sub = price_node.css_first(".sub-price")
+            if sub is not None:
+                sub.decompose()
+            for del_node in price_node.css("del"):
+                del_node.decompose()
             price_text = _normalize_text(price_node.text(strip=False))
             price = _strip_price_text(price_text)
             if price is not None:

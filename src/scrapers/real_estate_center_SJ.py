@@ -61,10 +61,6 @@ class RealEstateCenterScraper(EnrichmentMixin, BaseScraper):
     def __init__(self):
         super().__init__()
         self.source_domain = "realestatecenter.gr"
-
-    def __init__(self):
-        super().__init__()
-        self.source_domain = "realestatecenter.gr"
         self.api_url     = "https://realestatecenter.gr/wp-admin/admin-ajax.php"
         self.referer_url = "https://realestatecenter.gr/maps/"
 
@@ -235,6 +231,20 @@ class RealEstateCenterScraper(EnrichmentMixin, BaseScraper):
                 "latitude": None, "longitude": None, "images": [], "extra_features": {}
             }
 
+            # ── 0. Category from URL slug keyword (map §12 #15 — slug carries type).
+            # Keyword-search (not position) — some slugs are descriptive
+            # ("stunning-beachfront-villa-..."). Order: specific → general.
+            _u = url.lower()
+            for _kw, _cat in (
+                ("detached-house", "Detached House"), ("maisonette", "Maisonette"),
+                ("apartment", "Apartment"), ("studio", "Apartment"), ("villa", "Villa"),
+                ("hotel", "Hotel"), ("plot", "Land"), ("land", "Land"),
+                ("commercial", "Business"), ("house", "House"),
+            ):
+                if _kw in _u:
+                    details["category"] = _cat
+                    break
+
             # ── 1. Description: prefer .full-desc (complete), fallback to og:description
             full_desc_node = parser.css_first("span.full-desc")
             if full_desc_node:
@@ -354,14 +364,19 @@ class RealEstateCenterScraper(EnrichmentMixin, BaseScraper):
                 ):
                     details["images"].append(high_res_src)
 
-            # ── 7. Coordinates from any embedded map JS
+            # ── 7. Coordinates from any embedded map JS (with bbox sanity)
             if not details.get("latitude"):
                 script_match = re.search(
                     r"setView\(\[\s*([0-9.]+)\s*,\s*([0-9.]+)\s*\]", response.text,
                 )
                 if script_match:
-                    details["latitude"] = float(script_match.group(1))
-                    details["longitude"] = float(script_match.group(2))
+                    lat = float(script_match.group(1))
+                    lng = float(script_match.group(2))
+                    if 39.0 <= lat <= 41.5 and 22.0 <= lng <= 25.0:
+                        details["latitude"] = lat
+                        details["longitude"] = lng
+                    else:
+                        logger.debug(f"[{self.source_domain}] coords {lat},{lng} outside bbox — dropped")
 
             # ── 8. Run the smart NLP extractor over description + greedy text
             # Using greedy_text (DOM-level fallback text) makes this richer
