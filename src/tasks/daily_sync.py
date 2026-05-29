@@ -57,6 +57,8 @@ from src.scrapers.greximo import GreximoScraper
 from src.scrapers.greece_invest import GreeceInvestScraper
 from src.scrapers.halkidiki_imoti import HalkidikiImotiScraper
 from src.scrapers.sani_realestate import SaniRealestateScraper
+from src.scrapers.neamesitiki import NeamesitikiScraper
+from src.scrapers.dimitris_realestate import DimitrisRealestateScraper
 
 
 # --- DB & Core ---
@@ -307,6 +309,8 @@ async def _run_scrapers(global_stats: Dict[str, int]) -> List[DomainSyncReport]:
         GreeceInvestScraper(),
         HalkidikiImotiScraper(),
         SaniRealestateScraper(),
+        NeamesitikiScraper(),
+        DimitrisRealestateScraper(),
     ]
 
     domain_reports: List[DomainSyncReport] = []
