@@ -138,6 +138,13 @@ class ResGreeceScraper(EnrichmentMixin, BaseScraper):
     source_domain = "res-greece.com"
     _NLP_FILLABLE_COLUMNS = _NLP_FILLABLE_COLUMNS
 
+    def __init__(self) -> None:
+        super().__init__()
+        # BaseScraper.__init__ writes self.source_domain="" which shadows the
+        # class attribute. Restore the canonical domain on the instance.
+        # Same fix pattern as remax_metron.py.
+        self.source_domain = type(self).source_domain
+
     # -------------------------------------------------------------------------
     # collect_urls
     # -------------------------------------------------------------------------
@@ -425,7 +432,7 @@ class ResGreeceScraper(EnrichmentMixin, BaseScraper):
         parsed = LexborHTMLParser(html_text)
 
         result: Dict[str, Any] = {}
-        extras: List[str] = []
+        extra_features: Dict[str, Any] = {}
 
         # Status check (defense in depth — card filter should have caught)
         detail_status = self._detect_detail_status(parsed)
@@ -434,7 +441,7 @@ class ResGreeceScraper(EnrichmentMixin, BaseScraper):
                 f"[res-greece] DETAIL STATUS = {detail_status} for {url} "
                 f"(should have been filtered at card level)"
             )
-            extras.append(f"_detail_status: {detail_status}")
+            extra_features["_detail_status"] = detail_status
 
         # Region / area
         _region_main, village = self._extract_region_path(parsed)
@@ -501,38 +508,41 @@ class ResGreeceScraper(EnrichmentMixin, BaseScraper):
             result["price"] = sidebar_price
 
         # extra_features — amalgamate sidebar data + flags
+        # PropertyTemplate.extra_features is Dict[str, Any], not List[str].
+        # Atomic key/value pairs (matches casa/remax-metron pattern).
         if options.get("Object"):
-            extras.append(f"Tagline: {options['Object']}")
+            extra_features["tagline"] = options["Object"]
         if options.get("Object type"):
-            extras.append(f"Architecture: {options['Object type']}")
+            extra_features["architecture"] = options["Object type"]
         if options.get("Property type"):
-            extras.append(f"Condition: {options['Property type']}")
+            extra_features["condition"] = options["Property type"]
         if options.get("Sea"):
-            extras.append(f"Sea distance: {options['Sea']}")
+            extra_features["sea_distance"] = options["Sea"]
         if options.get("Sea view"):
-            extras.append(f"Sea view: {options['Sea view']}")
+            extra_features["sea_view"] = options["Sea view"]
         if options.get("Infrastructure"):
-            extras.append(
-                f"Infrastructure distance: {options['Infrastructure']}"
-            )
+            extra_features["infrastructure_distance"] = options["Infrastructure"]
         if options.get("Airport"):
-            extras.append(f"Airport distance: {options['Airport']}")
+            extra_features["airport_distance"] = options["Airport"]
         if options.get("Options"):
+            # Amenities as boolean flags (slugified keys), like casa_properties.
             for amenity in options["Options"].split(","):
                 amenity = amenity.strip()
                 if amenity:
-                    extras.append(f"Amenity: {amenity}")
+                    slug = re.sub(r"[^a-z0-9]+", "_", amenity.lower()).strip("_")
+                    if slug:
+                        extra_features[slug] = True
         # Energy class certificate (Latin OR Greek E variant on this site)
         for key in (
             "Energy class certificate",
             "Εnergy class certificate",  # Greek capital Epsilon Ε
         ):
             if options.get(key):
-                extras.append(f"Energy class: {options[key]}")
+                extra_features["energy_class"] = options[key]
                 break
 
-        if extras:
-            result["extra_features"] = extras
+        if extra_features:
+            result["extra_features"] = extra_features
 
         return result
 

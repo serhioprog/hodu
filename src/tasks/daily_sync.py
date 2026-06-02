@@ -64,6 +64,8 @@ from src.scrapers.kassandra_estate import KassandraEstateScraper
 from src.scrapers.halkidiki_estates import HalkidikiEstatesScraper
 from src.scrapers.res_greece import ResGreeceScraper
 from src.scrapers.remax_metron import RemaxMetronScraper
+from src.scrapers.halkidiki_realtors import HalkidikiRealtorsScraper
+from src.scrapers.sithonia_luxury_reservations import SithoniaLuxuryReservationsScraper
 
 # --- DB & Core ---
 from src.core.config import settings
@@ -320,6 +322,8 @@ async def _run_scrapers(global_stats: Dict[str, int]) -> List[DomainSyncReport]:
         HalkidikiEstatesScraper(),
         ResGreeceScraper(),
         RemaxMetronScraper(),
+        HalkidikiRealtorsScraper(),
+        SithoniaLuxuryReservationsScraper(),
     ]
 
     domain_reports: List[DomainSyncReport] = []

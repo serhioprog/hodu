@@ -206,8 +206,16 @@ def _bg_url(style: str) -> Optional[str]:
 
 
 def _strip_spitogatos_size(url: str) -> str:
-    """'.../286493735_900x675.jpg?v=...' → '.../286493735.jpg?v=...'."""
-    return re.sub(r"_\d+x\d+(?=\.\w+(?:\?|$))", "", url)
+    """OBSOLETE — kept for call-site compatibility. Spitogatos CDN
+    serves ONLY sized variants (_900x675, _1600x1200, etc.); stripping
+    the suffix produces 404s. Sized URLs from gallery are passed through.
+
+    Verified 2026-05-30:
+      m3.spitogatos.gr/{id}_900x675.jpg?v=...  → 200 OK
+      m3.spitogatos.gr/{id}.jpg?v=...          → 404
+    Same fix applied to kassandra_estate.py.
+    """
+    return url
 
 
 # =============================================================================
@@ -475,7 +483,12 @@ class CasaPropertiesScraper(EnrichmentMixin, BaseScraper):
             if m:
                 agent_code = m.group(1)
 
-        # Card-level location: not exposed in list. Detail-page Neighborhood will fill.
+        # Card-level location not exposed in template1 list. "Halkidiki" used
+        # as placeholder so daily_sync's HALKIDIKI_REGIONS_WHITELIST filter passes
+        # (it checks substring match in url+location_raw). Detail-page Neighborhood
+        # overrides this with the real area (e.g. "Nikiti") before save.
+        # Placeholder is factual: CASA PROPERTIES is a Halkidiki-only agency
+        # (office in Nikiti, Sithonia).
         seed = PropertyTemplate(
             site_property_id=str(site_id),
             source_domain=self.source_domain,
@@ -484,7 +497,7 @@ class CasaPropertiesScraper(EnrichmentMixin, BaseScraper):
             size_sqm=size_sqm,
             bedrooms=bedrooms,
             bathrooms=bathrooms,
-            location_raw=None,
+            location_raw="Halkidiki",
         )
         if cat:
             try:
