@@ -9,11 +9,14 @@ Architecture (Stage 0 hybrid):
   fragment the browser would render into #estatesResults.
 - Detail: GET /en-US/property/{numeric_id} — fully server-rendered.
 
-For filter aim=1 (Sale) + area=196 (Chalkidiki top-level) + priceFrom=400k
-the agency currently has 11 properties — single-page response, no
-pagination needed at this filter. If filter widens (e.g. priceFrom
-removed), pagination via 'pageClicked' field in JSON body would activate
-(empty body returned 18/page out of 102 total in recon).
+Filter aim=1 (Sale) + area=196 (Chalkidiki) returns 87 results across
+5 pages (18 per page). Pagination is via `page` field in JSON body
+(verified 2026-05-30 — `pageClicked` does NOT paginate, returns
+page 1 every time).
+
+Agency decision (2026-05-30): fetch FULL catalog (all 87 regardless of
+price). The `min_price` parameter from daily_sync is IGNORED here —
+business rule for this scraper is "everything in Halkidiki".
 
 URL patterns:
   List POST:  /en-US/search-results  (Content-Type: application/json)
@@ -42,6 +45,7 @@ Status filter:
 """
 from __future__ import annotations
 
+import asyncio
 import html as html_lib
 import json
 import re
@@ -152,62 +156,119 @@ class RemaxMetronScraper(EnrichmentMixin, BaseScraper):
         min_price: int = _DEFAULT_MIN_PRICE,
     ) -> List[PropertyTemplate]:
         """
-        POST JSON filter to backend search endpoint, parse returned HTML
-        fragment. Single POST suffices for the current filter (11 results,
-        totalPages=1).
+        Paginated POST walk. min_price is IGNORED — fetch full catalog
+        (agency decision 2026-05-30, all 87 Halkidiki listings).
+
+        Stops on: empty page, no-new-ids (dedup), reached announced total,
+        or page cap (safety).
         """
-        filter_body = {
-            "aim": _AIM_FOR_SALE,
-            "area": _AREA_HALKIDIKI,
-            "priceFrom": str(min_price),
+        headers = {
+            "Content-Type": "application/json",
+            "Origin": _BASE,
+            "Referer": _LIST_REFERER,
         }
-        logger.info(
-            f"[remax-metron] POST {_LIST_ENDPOINT} filter={filter_body}"
-        )
-
-        try:
-            response = await self.client.post(
-                _LIST_ENDPOINT,
-                data=json.dumps(filter_body),
-                headers={
-                    "Content-Type": "application/json",
-                    "Origin": _BASE,
-                    "Referer": _LIST_REFERER,
-                },
-            )
-        except Exception as exc:
-            logger.error(f"[remax-metron] list POST failed: {exc}")
-            return []
-
-        if response.status_code != 200:
-            logger.error(
-                f"[remax-metron] list POST HTTP {response.status_code}"
-            )
-            return []
-
-        body = response.text
-        parsed = LexborHTMLParser(body)
-
-        m = re.search(r"Found <b>(\d+)</b>", body)
-        announced = int(m.group(1)) if m else None
-        if announced is not None:
-            logger.info(
-                f"[remax-metron] site announces {announced} total results "
-                f"(filter priceFrom={min_price})"
-            )
 
         seeds: List[PropertyTemplate] = []
-        skipped_status = 0
-        for card in parsed.css("div.listing-item[data-property-id]"):
-            seed = self._parse_card(card)
-            if seed is None:
-                skipped_status += 1
-            else:
+        seen_ids: set = set()
+        skipped_status_total = 0
+        announced: Optional[int] = None
+        page = 1
+        _MAX_PAGES = 20
+
+        while page <= _MAX_PAGES:
+            filter_body = {
+                "aim": _AIM_FOR_SALE,
+                "area": _AREA_HALKIDIKI,
+                "page": str(page),
+            }
+            # NOTE: intentionally NOT sending priceFrom — agency wants
+            # full catalog regardless of orchestrator floor.
+
+            logger.info(
+                f"[remax-metron] POST page={page} filter={filter_body}"
+            )
+
+            try:
+                response = await self.client.post(
+                    _LIST_ENDPOINT,
+                    data=json.dumps(filter_body),
+                    headers=headers,
+                )
+            except Exception as exc:
+                logger.error(
+                    f"[remax-metron] list POST page={page} failed: {exc}"
+                )
+                break
+
+            if response.status_code != 200:
+                logger.error(
+                    f"[remax-metron] list POST page={page} HTTP "
+                    f"{response.status_code}"
+                )
+                break
+
+            body = response.text
+            parsed = LexborHTMLParser(body)
+
+            if page == 1:
+                m = re.search(r"Found <b>(\d+)</b>", body)
+                if m:
+                    announced = int(m.group(1))
+                    logger.info(
+                        f"[remax-metron] site announces {announced} total"
+                    )
+
+            page_cards = parsed.css("div.listing-item[data-property-id]")
+            if not page_cards:
+                logger.info(
+                    f"[remax-metron] page {page}: 0 cards — end of results"
+                )
+                break
+
+            new_this_page = 0
+            skipped_this_page = 0
+            for card in page_cards:
+                seed = self._parse_card(card)
+                if seed is None:
+                    skipped_this_page += 1
+                    continue
+                if seed.site_property_id in seen_ids:
+                    continue
+                seen_ids.add(seed.site_property_id)
                 seeds.append(seed)
+                new_this_page += 1
+
+            skipped_status_total += skipped_this_page
+            logger.info(
+                f"[remax-metron] page {page}: {len(page_cards)} cards, "
+                f"+{new_this_page} new (total {len(seeds)}), "
+                f"{skipped_this_page} status-filtered"
+            )
+
+            if new_this_page == 0:
+                logger.info(
+                    f"[remax-metron] page {page}: 0 new ids — "
+                    f"pagination exhausted"
+                )
+                break
+            if announced is not None and len(seeds) >= announced:
+                logger.info(
+                    f"[remax-metron] reached announced count {announced}"
+                )
+                break
+
+            page += 1
+            await asyncio.sleep(1)
+
+        if page > _MAX_PAGES:
+            logger.warning(
+                f"[remax-metron] hit page cap {_MAX_PAGES}"
+            )
 
         logger.info(
-            f"[remax-metron] collect_urls done: {len(seeds)} seeds, "
-            f"skipped {skipped_status} status-filtered (announced={announced})"
+            f"[remax-metron] collect_urls done: {len(seeds)} unique seeds "
+            f"across {page} pages, {skipped_status_total} status-filtered "
+            f"(announced={announced})"
         )
         return seeds
 
@@ -267,11 +328,11 @@ class RemaxMetronScraper(EnrichmentMixin, BaseScraper):
         images = [thumb_url] if thumb_url else []
 
         # Build seed
-        extras = [f"code: {prop_id}"]
+        extra_features: Dict[str, Any] = {"code": prop_id}
         if prop_type_text:
-            extras.append(f"property_type_raw: {prop_type_text}")
+            extra_features["property_type_raw"] = prop_type_text
         if bathrooms is not None:
-            extras.append(f"bathrooms: {bathrooms}")
+            extra_features["bathrooms"] = bathrooms
 
         return PropertyTemplate(
             site_property_id=prop_id,
@@ -284,7 +345,7 @@ class RemaxMetronScraper(EnrichmentMixin, BaseScraper):
             land_size_sqm=size_sqm if category == "Land" else None,
             bedrooms=bedrooms,
             images=images,
-            extras=extras,
+            extra_features=extra_features,
         )
 
     async def fetch_details(self, url: str) -> Dict[str, Any]:
@@ -307,7 +368,7 @@ class RemaxMetronScraper(EnrichmentMixin, BaseScraper):
         html_text = response.text
         parsed = LexborHTMLParser(html_text)
         result: Dict[str, Any] = {}
-        extras: List[str] = []
+        extra_features: Dict[str, Any] = {}
 
         # Defense-in-depth status (h1 second span)
         h1_node = parsed.css_first("h1")
@@ -319,14 +380,14 @@ class RemaxMetronScraper(EnrichmentMixin, BaseScraper):
                     logger.warning(
                         f"(should have been filtered at card level)"
                     )
-                    extras.append(f"_detail_status: {status}")
+                    extra_features['_detail_status'] = status
 
         # Real semantic title from JS literal (richer than h1)
         title_match = re.search(
             r'let\s+title\s*=\s*"((?:[^"\\]|\\.)*)"', html_text
         )
         if title_match:
-            extras.append(f"title: {title_match.group(1).strip()}")
+            extra_features['title'] = title_match.group(1).strip()
 
         # Price from data-propertyprise attribute (cleanest — numeric integer)
         price_node = parsed.css_first("[data-propertyprise]")
@@ -403,7 +464,7 @@ class RemaxMetronScraper(EnrichmentMixin, BaseScraper):
 
             if kl == "property type":
                 detail_category = _classify_category(value)
-                extras.append(f"property_type_raw: {value}")
+                extra_features['property_type_raw'] = value
             elif kl == "bedrooms":
                 v = _parse_int_first(value)
                 if v is not None:
@@ -411,7 +472,7 @@ class RemaxMetronScraper(EnrichmentMixin, BaseScraper):
             elif kl == "bathrooms":
                 v = _parse_int_first(value)
                 if v is not None:
-                    extras.append(f"bathrooms: {v}")
+                    extra_features['bathrooms'] = v
             elif kl == "area":
                 v = _parse_float_eu(value)
                 if v:
@@ -420,23 +481,23 @@ class RemaxMetronScraper(EnrichmentMixin, BaseScraper):
                     else:
                         result["size_sqm"] = v
             elif kl == "code":
-                extras.append(f"code: {value}")
+                extra_features['code'] = value
             elif kl == "year built":
                 yr = _parse_int_first(value)
                 if yr and 1800 <= yr <= 2030:
                     result["year_built"] = yr
             elif kl == "floor":
-                extras.append(f"floor: {value}")
+                extra_features['floor'] = value
             elif kl == "parking":
                 p_int = _parse_int_first(value)
                 if p_int is not None:
-                    extras.append(f"parking_spaces: {p_int}")
+                    extra_features['parking_spaces'] = p_int
             elif kl == "energy class":
                 m = re.search(r"\b([A-G][+\-]?)\b", value)
                 if m:
-                    extras.append(f"energy_class: {m.group(1)}")
+                    extra_features['energy_class'] = m.group(1)
             elif kl == "category":
-                extras.append(f"site_category: {value}")
+                extra_features['site_category'] = value
             elif kl == "distance from":
                 # Multi-line: 'Seaside: 0 Meters / Airport: 104 Kilometers / City: 16 Kilometers'
                 # NB: must use `value` (without "Distance from" prefix) — otherwise
@@ -446,13 +507,11 @@ class RemaxMetronScraper(EnrichmentMixin, BaseScraper):
                     value,
                 ):
                     factor = 1 if unit.lower() == "meters" else 1000
-                    extras.append(
-                        f"distance_to_{label.lower()}_m: {int(num) * factor}"
-                    )
+                    extra_features[f"distance_to_{label.lower()}_m"] = int(num) * factor
             elif kl == "price per sq.m":
                 pps = _parse_float_eu(value)
                 if pps:
-                    extras.append(f"price_per_sqm: {pps}")
+                    extra_features['price_per_sqm'] = pps
 
         # Override category if detail page has more specific property type
         if detail_category:
@@ -477,13 +536,13 @@ class RemaxMetronScraper(EnrichmentMixin, BaseScraper):
                 .replace(")", "")
                 .replace(":", "")
             )
-            extras.append(f"{key_snake}: {value}")
+            extra_features[key_snake] = value
 
         # Exclusive flag
         if parsed.css_first(".ribbonstr"):
-            extras.append("exclusive: true")
+            extra_features["exclusive"] = True
 
-        if extras:
-            result["extras"] = extras
+        if extra_features:
+            result["extra_features"] = extra_features
 
         return result

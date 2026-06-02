@@ -215,8 +215,16 @@ def _bg_url(style: str) -> Optional[str]:
 
 
 def _strip_spitogatos_size(url: str) -> str:
-    """'.../348080759_1600x1200.jpg?v=...' → '.../348080759.jpg?v=...'."""
-    return re.sub(r"_\d+x\d+(?=\.\w+(?:\?|$))", "", url)
+    """OBSOLETE — kept for call-site compatibility. Spitogatos CDN
+    serves ONLY sized variants (_1600x1200, _800x600, etc.); stripping
+    the suffix produces 404s. Gallery already supplies _1600x1200 URLs
+    which are high quality (~1600px wide), so we pass through unchanged.
+
+    Verified 2026-05-30:
+      m3.spitogatos.gr/{id}_1600x1200.jpg?v=...  → 200 OK
+      m3.spitogatos.gr/{id}.jpg?v=...            → 404
+    """
+    return url
 
 
 # =============================================================================
