@@ -73,6 +73,8 @@ from src.scrapers.sousouras_realestate import SousourasRealestateScraper
 from src.scrapers.kanata_realestate import KanataRealestateScraper
 from src.scrapers.halkidikiagency import HalkidikiagencyScraper
 from src.scrapers.kassandra_properties import KassandraPropertiesScraper
+from src.scrapers.blueproperty import BluepropertyScraper
+from src.scrapers.greece_halkidiki import GreeceHalkidikiScraper
 
 # --- DB & Core ---
 from src.core.config import settings
@@ -338,6 +340,8 @@ async def _run_scrapers(global_stats: Dict[str, int]) -> List[DomainSyncReport]:
         KanataRealestateScraper(),     # Camoufox-based, PerimeterX bypass
         HalkidikiagencyScraper(),      # Camoufox-based, PerimeterX bypass (3 categories)
         KassandraPropertiesScraper(),  # Camoufox-based, PerimeterX bypass (3 categories)
+        BluepropertyScraper(),         # Camoufox-based, 3 categories (KYMAPROPERTY)
+        GreeceHalkidikiScraper(),      # Camoufox-based, 3 categories (kefalidis stefanos, kanata template)
     ]
 
     domain_reports: List[DomainSyncReport] = []
