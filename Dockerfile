@@ -59,6 +59,25 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN playwright install chromium
 
 # ============================================================
+# Camoufox (anti-bot Firefox-based browser, used by 7 scrapers)
+# ============================================================
+# Camoufox is a hardened Firefox build that bypasses fingerprinting-based
+# bot detection (PerimeterX, Cloudflare, etc). It's distinct from
+# Playwright bundled Firefox — has its own binary (~713MB) downloaded
+# via `python -m camoufox fetch`. Used by chalkidikiproperties,
+# sousouras-realestate, kanata, halkidikiagency, kassandra-properties,
+# blueproperty, greece-halkidiki scrapers.
+#
+# Without this layer, any AsyncCamoufox() call fails at launch with
+# missing browser binary or missing-lib errors.
+#
+# camoufox python package is already pip-installed via requirements.txt
+# above. Here we install Firefox OS deps + download the Camoufox Firefox
+# binary into /root/.cache/camoufox (~1.3GB total).
+RUN playwright install-deps firefox && rm -rf /var/lib/apt/lists/*
+RUN python -m camoufox fetch
+
+# ============================================================
 # Application source
 # ============================================================
 COPY ./src ./src
