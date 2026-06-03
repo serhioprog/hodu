@@ -43,7 +43,6 @@ from src.scrapers.halkidiki_real_estate_hellenic_living import HalkidikiRealEsta
 from src.scrapers.real_estate_center_SJ import RealEstateCenterScraper
 from src.scrapers.sithonia_rental_sales import SithoniaRentalSalesScraper
 from src.scrapers.engel_voelkers import EngelVoelkersScraper
-from src.scrapers.draft.sousouras_realestate import SousourasRealEstateScraper
 from src.scrapers.ellas_estate import EllasEstateScraper
 from src.scrapers.dionisiou_realestate import DionisiouRealEstateScraper
 from src.scrapers.kw_greece import KWGreeceScraper
@@ -51,7 +50,6 @@ from src.scrapers.m_properties import MPropertiesScraper
 from src.scrapers.ergon_real_estate import ErgonRealEstateScraper
 from src.scrapers.clever_estate import CleverEstateScraper
 from src.scrapers.sithonia_properties import SithoniaPropertiesScraper
-#from src.scrapers.kanata_realestate import KanataRealEstateScraper
 from src.scrapers.edma_estate import EdmaEstateScraper
 from src.scrapers.greximo import GreximoScraper
 from src.scrapers.greece_invest import GreeceInvestScraper
@@ -71,6 +69,8 @@ from src.scrapers.realgreece_net import RealGreeceNetScraper
 from src.scrapers.poseidonrealestate import PoseidonRealEstateScraper
 from src.scrapers.openestate import OpenEstateScraper
 from src.scrapers.chalkidikiproperties import ChalkidikipropertiesScraper
+from src.scrapers.sousouras_realestate import SousourasRealestateScraper
+from src.scrapers.kanata_realestate import KanataRealestateScraper
 
 # --- DB & Core ---
 from src.core.config import settings
@@ -301,7 +301,6 @@ async def _run_scrapers(global_stats: Dict[str, int]) -> List[DomainSyncReport]:
         GLRealEstateScraper(),
         RealEstateCenterScraper(),
         GreekExclusiveScraper(),
-        #SousourasRealEstateScraper(), # blocked by PerimeterX
         SithoniaRentalSalesScraper(),
         HalkidikiEstateScraper(),
         EngelVoelkersScraper(),
@@ -313,7 +312,6 @@ async def _run_scrapers(global_stats: Dict[str, int]) -> List[DomainSyncReport]:
         #ErgonRealEstateScraper(),  # blocked by PerimeterX
         CleverEstateScraper(),
         SithoniaPropertiesScraper(),
-        #KanataRealEstateScraper(), # blocked by PerimeterX
         EdmaEstateScraper(),
         GrekodomDevelopmentScraper(),
         GreximoScraper(),
@@ -334,6 +332,8 @@ async def _run_scrapers(global_stats: Dict[str, int]) -> List[DomainSyncReport]:
         PoseidonRealEstateScraper(),
         OpenEstateScraper(),
         ChalkidikipropertiesScraper(),  # Camoufox-based, PerimeterX bypass
+        SousourasRealestateScraper(),  # Camoufox-based, PerimeterX bypass
+        KanataRealestateScraper(),     # Camoufox-based, PerimeterX bypass
     ]
 
     domain_reports: List[DomainSyncReport] = []

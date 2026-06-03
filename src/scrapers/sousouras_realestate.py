@@ -1,6 +1,6 @@
-"""kanatarealestate.gr scraper (Kefalidis Real Estate).
+"""sousouras-realestate.gr scraper (Kefalidis Real Estate).
 
-Site: Kefalidis Real Estate (https://www.kanatarealestate.gr)
+Site: Kefalidis Real Estate (https://www.sousouras-realestate.gr)
 Stack: Custom PHP CMS + Bootstrap + Swiper galleries
 Image hosting: Spitogatos CDN (m1/m2/m3.spitogatos.gr)
 Anti-bot: PerimeterX (HUMAN Security) — requires Camoufox bypass
@@ -22,14 +22,14 @@ deviates from the standard collect_urls/fetch_details split:
 
 Future Sprint 8 work: add Camoufox as Stage 2 to fetcher_funnel so this
 deviation can be removed and other 3 PerimeterX-blocked sites
-(kanata_realestate, ergon_real_estate, kanata_realestate) unlocked.
+(sousouras_realestate, ergon_real_estate, kanata_realestate) unlocked.
 
 URL patterns
 ------------
 List:    /en/property/search?listingType=sale&category=residential&region=196&priceLow={N}
 Detail:  /en/propertyDetails/{N}
 
-Inventory: ~18 sale listings ≥€400k in Halkidiki, mostly Sithonia. Walks 4 search categories: residential (6 Detached House), commercial (1 Store), land (10 Farm parcels + plots), other (1 misc).
+Inventory: ~43 sale listings ≥€400k in Halkidiki across 5 pages.
 """
 from __future__ import annotations
 
@@ -49,12 +49,11 @@ from src.scrapers.base import BaseScraper
 # ============================================================================
 # Constants
 # ============================================================================
-_SOURCE_DOMAIN = "kanatarealestate.gr"
-_BASE_URL = "https://www.kanatarealestate.gr"
-_CATEGORIES = ("residential", "commercial", "land", "other")
-_SEARCH_URL_TEMPLATE = (
-    "https://www.kanatarealestate.gr/en/property/search"
-    "?listingType=sale&region=196&category={cat}&priceLow={min_price}"
+_SOURCE_DOMAIN = "sousouras-realestate.gr"
+_BASE_URL = "https://www.sousouras-realestate.gr"
+_SEARCH_URL = (
+    "https://www.sousouras-realestate.gr/en/property/search"
+    "?listingType=sale&category=residential&region=196&priceLow={min_price}"
 )
 
 # Halkidiki bbox sanity
@@ -62,9 +61,7 @@ _HALKIDIKI_BBOX = (39.0, 22.0, 41.5, 25.0)
 
 # Category mapping from card title prefix ("Villa for sale ..." → Villa)
 _TITLE_PREFIX_TO_CATEGORY: List[Tuple[str, str]] = [
-    # Order: most specific first (compound tokens before generic ones)
-    # === Residential ===
-    ("apartment complex for sale",  "Complex"),
+    # Order: most specific first
     ("maisonette for sale",         "Maisonette"),
     ("detached house for sale",     "Detached House"),
     ("villa for sale",              "Villa"),
@@ -75,26 +72,11 @@ _TITLE_PREFIX_TO_CATEGORY: List[Tuple[str, str]] = [
     ("studio for sale",             "Apartment"),
     ("loft for sale",               "Apartment"),
     ("building for sale",           "Complex"),
-    # === Hotel ===
+    ("apartment complex for sale",  "Complex"),
     ("hotel for sale",              "Hotel"),
-    # === Commercial (canonical: Hotel/Commercial) ===
-    ("business building for sale",  "Hotel/Commercial"),
-    ("industrial space for sale",   "Hotel/Commercial"),
-    ("craft space for sale",        "Hotel/Commercial"),
-    ("office for sale",             "Hotel/Commercial"),
-    ("store for sale",              "Hotel/Commercial"),
-    ("shop for sale",               "Hotel/Commercial"),
-    ("warehouse for sale",          "Hotel/Commercial"),
-    ("showroom for sale",           "Hotel/Commercial"),
-    ("hall for sale",               "Hotel/Commercial"),
-    # === Land ===
-    ("farm parcel for sale",        "Land"),
-    ("land plot for sale",          "Land"),
     ("plot for sale",               "Land"),
-    ("parcel for sale",             "Land"),
     ("land for sale",               "Land"),
     ("farm for sale",               "Land"),
-    ("island for sale",             "Land"),
 ]
 
 
@@ -219,10 +201,10 @@ def _extract_id_from_url(url: str) -> Optional[str]:
 # ============================================================================
 # Scraper
 # ============================================================================
-class KanataRealestateScraper(EnrichmentMixin, BaseScraper):
+class SousourasRealestateScraper(EnrichmentMixin, BaseScraper):
     """Kefalidis Real Estate scraper (Camoufox-based, PerimeterX bypass)."""
 
-    name = "kanata_realestate"
+    name = "sousouras_realestate"
     source_domain = _SOURCE_DOMAIN
     base_url = _BASE_URL
 
@@ -247,115 +229,93 @@ class KanataRealestateScraper(EnrichmentMixin, BaseScraper):
         from camoufox.async_api import AsyncCamoufox
 
         seeds: List[PropertyTemplate] = []
+        search_url = _SEARCH_URL.format(min_price=min_price)
         logger.info(f"[{self.source_domain}] Camoufox launching...")
 
-        async with AsyncCamoufox(headless=True, humanize=False, geoip=True) as browser:
+        async with AsyncCamoufox(headless=True, humanize=True, geoip=True) as browser:
             page = await browser.new_page()
 
-            # ---- Phase 1.1: walk 4 category search URLs, each paginated ----
+            # ---- Phase 1.1: walk paginated search pages → collect ALL card URLs ----
             cards: List[Dict[str, Any]] = []
             seen_urls: set = set()
-            max_pages = 20  # safety ceiling per category
+            page_num = 1
+            max_pages = 20  # safety ceiling
 
-            for category in _CATEGORIES:
-                search_url = _SEARCH_URL_TEMPLATE.format(cat=category, min_price=min_price)
-                logger.info(f"[{self.source_domain}] === category: {category} ===")
-                page_num = 1
-                cat_card_count_before = len(cards)
-
-                while page_num <= max_pages:
-                    page_url = (
-                        search_url if page_num == 1
-                        else f"{search_url}&page={page_num}"
-                    )
-                    logger.info(f"[{self.source_domain}] GET page {page_num}: {page_url}")
+            while page_num <= max_pages:
+                page_url = (
+                    search_url if page_num == 1
+                    else f"{search_url}&page={page_num}"
+                )
+                logger.info(f"[{self.source_domain}] GET page {page_num}: {page_url}")
+                try:
+                    await page.goto(page_url, wait_until="domcontentloaded", timeout=90000)
+                    # Wait for cards to render. Sousouras renders cards via JS after DOMContentLoaded.
                     try:
-                        await page.goto(page_url, wait_until="domcontentloaded", timeout=90000)
-                        # Wait for cards to render. Sousouras renders cards via JS after DOMContentLoaded.
-                        try:
-                            await page.wait_for_selector('.listing-item', timeout=20000)
-                        except Exception:
-                            logger.warning(
-                                f"[{self.source_domain}] page {page_num}: 'a.property-item' "
-                                "didn't appear within 20s — page may be empty or selector changed"
-                            )
-                        await asyncio.sleep(2)
-                    except Exception as exc:
-                        logger.error(f"[{self.source_domain}] page {page_num} fetch: {exc!r}")
-                        break
+                        await page.wait_for_selector('a.property-item', timeout=20000)
+                    except Exception:
+                        logger.warning(
+                            f"[{self.source_domain}] page {page_num}: 'a.property-item' "
+                            "didn't appear within 20s — page may be empty or selector changed"
+                        )
+                    await asyncio.sleep(2)
+                except Exception as exc:
+                    logger.error(f"[{self.source_domain}] page {page_num} fetch: {exc!r}")
+                    break
 
-                    page_cards = await page.evaluate("""() => {
-                    const out = [];
-                    for (const card of document.querySelectorAll('.listing-item')) {
-                        const link = card.querySelector('a[href*="/propertyDetails/"]');
-                        if (!link) continue;
-                        const href = link.getAttribute('href');
-                        if (!href) continue;
-                        const titleNode = card.querySelector('h4 a');
-                        const priceNode = card.querySelector('b');
-                        const sizeNode = card.querySelector('b span.pull-right');
-                        const codeNode = card.querySelector('.listing-item-code');
-                        const coordNode = card.querySelector('a.popup-modal[data-lat]');
-                        const bg = card.querySelector('.bg-image');
-                        let img = null;
-                        if (bg) {
-                            const style = bg.getAttribute('style') || '';
-                            const m = style.match(/url\(["\']?(https?:[^"\')]+)/);
-                            if (m) img = m[1];
-                        }
-                        let priceText = null;
-                        if (priceNode) {
-                            const clone = priceNode.cloneNode(true);
-                            const span = clone.querySelector('span');
-                            if (span) span.remove();
-                            priceText = clone.textContent.replace(/\s+/g, ' ').trim();
-                        }
-                        out.push({
-                            url: href.startsWith('http') ? href : ('https://www.kanatarealestate.gr' + href),
-                            title: titleNode ? titleNode.textContent.trim() : null,
-                            price_text: priceText,
-                            area_text: sizeNode ? sizeNode.textContent.trim() : null,
-                            code: codeNode ? codeNode.textContent.replace(/\s+/g, ' ').trim() : null,
-                            thumb: img,
-                            card_lat: coordNode ? coordNode.getAttribute('data-lat') : null,
-                            card_lng: coordNode ? coordNode.getAttribute('data-lon') : null,
-                            card_body: card.textContent.replace(/\s+/g, ' ').trim().slice(0, 250),
-                        });
+                page_cards = await page.evaluate("""() => {
+                const out = [];
+                for (const a of document.querySelectorAll('a.property-item')) {
+                    const href = a.getAttribute('href');
+                    if (!href || !href.includes('/propertyDetails/')) continue;
+                    const h3 = a.querySelector('h3');
+                    const priceNode = a.querySelector('.price');
+                    const areaNode = a.querySelector('.area');
+                    const bg = a.querySelector('.bg-image');
+                    let img = null;
+                    if (bg) {
+                        const m = (bg.getAttribute('style') || '').match(/url\\(["']?(https?:[^"')]+)/);
+                        if (m) img = m[1];
                     }
-                    return out;
+                    out.push({
+                        url: href.startsWith('http') ? href : ('https://www.sousouras-realestate.gr' + href),
+                        title: h3 ? h3.textContent.trim() : null,
+                        price_text: priceNode ? priceNode.textContent.trim() : null,
+                        area_text: areaNode ? areaNode.textContent.trim() : null,
+                        thumb: img,
+                        card_body: a.textContent.replace(/\\s+/g, ' ').trim().slice(0, 200),
+                    });
+                }
+                return out;
+            }""")
+                # Filter new URLs only (dedup across pages)
+                new_count = 0
+                for c in page_cards:
+                    if c["url"] not in seen_urls:
+                        seen_urls.add(c["url"])
+                        cards.append(c)
+                        new_count += 1
+
+                logger.info(
+                    f"[{self.source_domain}] page {page_num}: {len(page_cards)} cards, "
+                    f"{new_count} new (total seen: {len(cards)})"
+                )
+
+                # Stop conditions:
+                # - empty page → no more results
+                # - no new cards on this page → duplicate page, stop
+                if not page_cards or new_count == 0:
+                    break
+
+                # Check pagination: is this the last page?
+                last_page = await page.evaluate("""() => {
+                    const next = document.querySelector('.pagination .next');
+                    return next ? next.classList.contains('disabled') : true;
                 }""")
-                    # Filter new URLs only (dedup across pages)
-                    new_count = 0
-                    for c in page_cards:
-                        if c["url"] not in seen_urls:
-                            seen_urls.add(c["url"])
-                            cards.append(c)
-                            new_count += 1
+                if last_page:
+                    logger.info(f"[{self.source_domain}] reached last page ({page_num})")
+                    break
 
-                    logger.info(
-                        f"[{self.source_domain}] page {page_num}: {len(page_cards)} cards, "
-                        f"{new_count} new (total seen: {len(cards)})"
-                    )
-
-                    # Stop conditions:
-                    # - empty page → no more results
-                    # - no new cards on this page → duplicate page, stop
-                    if not page_cards or new_count == 0:
-                        break
-
-                    # Check pagination: is this the last page?
-                    last_page = await page.evaluate("""() => {
-                        const next = document.querySelector('.pagination .next');
-                        return next ? next.classList.contains('disabled') : true;
-                    }""")
-                    if last_page:
-                        logger.info(f"[{self.source_domain}] reached last page ({page_num})")
-                        break
-
-                    page_num += 1
-
-                cat_new = len(cards) - cat_card_count_before
-                logger.info(f"[{self.source_domain}] category {category}: {cat_new} new cards")
+                page_num += 1
 
             if not cards:
                 logger.warning(f"[{self.source_domain}] empty search — no listings or selector changed")
@@ -393,8 +353,6 @@ class KanataRealestateScraper(EnrichmentMixin, BaseScraper):
                         card_price_text=card.get("price_text") or "",
                         card_area_text=card.get("area_text") or "",
                         card_body=card.get("card_body") or "",
-                        card_lat=card.get("card_lat"),
-                        card_lng=card.get("card_lng"),
                     )
                 except Exception as exc:
                     logger.exception(f"[{self.source_domain}] detail parse error {url}")
@@ -449,8 +407,6 @@ class KanataRealestateScraper(EnrichmentMixin, BaseScraper):
         card_price_text: str,
         card_area_text: str,
         card_body: str,
-        card_lat: Optional[str] = None,
-        card_lng: Optional[str] = None,
     ) -> Dict[str, Any]:
         parser = LexborHTMLParser(html)
         data: Dict[str, Any] = {}
@@ -525,17 +481,6 @@ class KanataRealestateScraper(EnrichmentMixin, BaseScraper):
             try:
                 lat = float(marker.attributes.get("data-lat", ""))
                 lng = float(marker.attributes.get("data-lng", ""))
-                if _bbox_check(lat, lng):
-                    data["latitude"] = lat
-                    data["longitude"] = lng
-            except (ValueError, TypeError):
-                pass
-
-        # Fallback: use coords from search card if detail page lacked them
-        if "latitude" not in data and card_lat and card_lng:
-            try:
-                lat = float(card_lat)
-                lng = float(card_lng)
                 if _bbox_check(lat, lng):
                     data["latitude"] = lat
                     data["longitude"] = lng
@@ -702,7 +647,7 @@ class KanataRealestateScraper(EnrichmentMixin, BaseScraper):
 
     def _parse_specs_table(self, parser, data: Dict[str, Any], extras: Dict[str, Any]) -> None:
         """Walk <table class='info-table'> th/td pairs."""
-        for tr in parser.css(".property-features-table table.table tr"):
+        for tr in parser.css("table.info-table tr"):
             th = tr.css_first("th")
             td = tr.css_first("td")
             if not th or not td:
@@ -813,28 +758,40 @@ class KanataRealestateScraper(EnrichmentMixin, BaseScraper):
                     extras[f"feature_{slug}"] = True
 
     def _extract_images(self, parser, html_text: str) -> List[str]:
-        """Gallery: Owl carousel #property-gallery > .owl-item > .item > img[src].
-
-        Owl carousel sometimes clones first/last slides for infinite-scroll,
-        so dedup by src and stop after first cycle (set already handles it).
-        """
+        """Gallery: Swiper carousel with data-src (lazy) or background-image style."""
         seen: set = set()
         images: List[str] = []
 
-        # Main gallery (high-res 900x675)
-        for img in parser.css("#property-gallery .owl-item img[src]"):
-            src = (img.attributes.get("src") or "").strip()
-            if src.startswith("http") and src not in seen and not src.endswith(".svg"):
-                seen.add(src)
-                images.append(src)
+        # Try Swiper slides
+        for slide in parser.css(".swiper-slide"):
+            # Skip duplicate slides used by Swiper for infinite scroll
+            cls = slide.attributes.get("class", "") or ""
+            if "swiper-slide-duplicate" in cls:
+                continue
+            # data-src on inner img
+            img = slide.css_first("img[data-src]") or slide.css_first("img[src]")
+            if img:
+                src = (img.attributes.get("data-src") or img.attributes.get("src") or "").strip()
+                if src.startswith("http") and src not in seen and not src.endswith(".svg"):
+                    seen.add(src)
+                    images.append(src)
+                    continue
+            # background-image fallback
+            inner = slide.css_first(".swiper-slide-inner")
+            if inner:
+                style = inner.attributes.get("style", "") or ""
+                m = re.search(r'url\(["\']?(https?:[^"\')]+)', style)
+                if m:
+                    src = m.group(1)
+                    if src not in seen and not src.endswith(".svg"):
+                        seen.add(src)
+                        images.append(src)
 
-        # Fallback: try any img inside owl-carousel
+        # Final fallback: all <img> tags inside swiper-container
         if not images:
-            for img in parser.css(".owl-carousel img[src]"):
-                src = (img.attributes.get("src") or "").strip()
-                if (src.startswith("http") and src not in seen
-                        and not src.endswith(".svg")
-                        and "_150x110" not in src):  # exclude thumbnails
+            for img in parser.css(".swiper-container img"):
+                src = (img.attributes.get("data-src") or img.attributes.get("src") or "").strip()
+                if src.startswith("http") and src not in seen and not src.endswith(".svg"):
                     seen.add(src)
                     images.append(src)
 
@@ -843,8 +800,8 @@ class KanataRealestateScraper(EnrichmentMixin, BaseScraper):
     def _parse_agent(self, parser, extras: Dict[str, Any]) -> None:
         """Extract contact info from .contact-info."""
         # Static agency-level defaults
-        extras["agent_company"] = "Kanata Real Estate"
-        extras["agent_email"] = "info@kanatarealestate.gr"
+        extras["agent_company"] = "REAL ESTATE SOUSOURAS"
+        extras["agent_email"] = "info@sousouras-realestate.gr"
 
         # Contact person name from first .contact-info li
         for li in parser.css(".contact-info li"):
