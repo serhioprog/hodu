@@ -69,6 +69,7 @@ from src.scrapers.propertieshalkidiki import PropertiesHalkidikiScraper
 from src.scrapers.sithonia_luxury_reservations import SithoniaLuxuryReservationsScraper
 from src.scrapers.realgreece_net import RealGreeceNetScraper
 from src.scrapers.poseidonrealestate import PoseidonRealEstateScraper
+from src.scrapers.openestate import OpenEstateScraper
 
 # --- DB & Core ---
 from src.core.config import settings
@@ -330,6 +331,7 @@ async def _run_scrapers(global_stats: Dict[str, int]) -> List[DomainSyncReport]:
         RealGreeceNetScraper(),
         PropertiesHalkidikiScraper(),
         PoseidonRealEstateScraper(),
+        OpenEstateScraper(),
     ]
 
     domain_reports: List[DomainSyncReport] = []
