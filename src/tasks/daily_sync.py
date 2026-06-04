@@ -297,6 +297,20 @@ async def _collect_funnel_stats(since: datetime) -> dict:
 # =============================================================
 # PHASE 1: scraping
 # =============================================================
+# Camoufox-based scrapers prone to transient anti-bot blocks (0 cards on first try).
+# These get one retry after a 3-min cooldown.
+_FLAKY_SCRAPERS = {
+    "kanatarealestate.gr",
+    "chalkidikiproperties.gr",
+    "sousouras-realestate.gr",
+    "halkidikiagency.gr",
+    "kassandra-properties.gr",
+    "blueproperty.gr",
+    "greece-halkidiki.com",
+    "ergonrealestate.com",
+}
+
+
 async def _run_scrapers(global_stats: Dict[str, int]) -> List[DomainSyncReport]:
     """
     Run all active scrapers per-domain. Returns a list of DomainSyncReport
@@ -380,6 +394,25 @@ async def _run_scrapers(global_stats: Dict[str, int]) -> List[DomainSyncReport]:
             logger.error(f"❌ {domain} collect_urls crashed: {e}")
             error_msg = str(e)
             scrape_ok = False
+
+        # Retry once for flaky Camoufox scrapers (transient anti-bot recovery)
+        if not scrape_ok and domain in _FLAKY_SCRAPERS:
+            logger.warning(
+                f"[{domain}] first attempt empty/failed; retrying once after 3min cooldown"
+            )
+            await asyncio.sleep(180)
+            try:
+                site_properties = await scraper.collect_urls(min_price=400000)
+                scrape_ok = bool(site_properties)
+                if scrape_ok:
+                    logger.info(
+                        f"[{domain}] retry SUCCESS: {len(site_properties)} URLs recovered"
+                    )
+                    error_msg = None
+            except Exception as e:
+                logger.error(f"❌ {domain} retry also crashed: {e}")
+                error_msg = str(e)
+                scrape_ok = False
 
         if not scrape_ok:
             logger.error(f"❌ {domain}: empty/failed listing — skipping domain entirely")
