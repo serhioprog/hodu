@@ -234,6 +234,7 @@ class ChalkidikipropertiesScraper(EnrichmentMixin, BaseScraper):
 
         async with AsyncCamoufox(headless=True, humanize=True, geoip=True) as browser:
             page = await browser.new_page()
+            page.on("pageerror", lambda e: None)  # swallow JS errors
 
             # ---- Phase 1.1: search page → collect card URLs ----
             logger.info(f"[{self.source_domain}] GET search: {search_url}")

@@ -346,20 +346,28 @@ class SpitogatosScraper(EnrichmentMixin, BaseScraper):
         if desc:
             data["description"] = desc.text(strip=True)
 
-        # Images (upgrade thumbnails to 900x675)
-        imgs: List[str] = []
-        seen_img = set()
-        for img in tree.css("img[src*='spitogatos.gr']"):
-            src = img.attributes.get("src", "")
-            if not src:
-                continue
-            src = re.sub(r"_\d+x\d+\.jpg", "_900x675.jpg", src)
-            if src in seen_img:
-                continue
-            seen_img.add(src)
-            imgs.append(src)
-        if imgs:
-            data["images"] = imgs
+        # Images: extract all property image IDs (incl. lazy-loaded in __NUXT__).
+        # Cluster filter drops outliers like agency logo (which has ID far from property cluster).
+        # Use _1600x1200.jpg — biggest size Spitogatos serves.
+        url_pattern = re.compile(r"spitogatos\.gr(?:/|\\u002F)(\d{7,10})_\d+x\d+")
+        url_ids = set(int(x) for x in url_pattern.findall(html))
+        if url_ids:
+            sorted_ids = sorted(url_ids)
+            median_id = sorted_ids[len(sorted_ids) // 2]
+            # Find ALL 8-9 digit numbers within ±300 of median (property cluster)
+            cluster_ids = set()
+            for m in re.finditer(r"\b(\d{8,9})\b", html):
+                try:
+                    i = int(m.group(1))
+                    if abs(i - median_id) <= 300:
+                        cluster_ids.add(i)
+                except ValueError:
+                    pass
+            if cluster_ids:
+                data["images"] = [
+                    f"https://m1.spitogatos.gr/{pid}_1600x1200.jpg"
+                    for pid in sorted(cluster_ids)
+                ]
 
         # Features (4 sections by data-test-id)
         features: Dict[str, Dict[str, bool]] = {}
