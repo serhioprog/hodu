@@ -42,6 +42,7 @@
         }
 
     </style>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
 <body>
 
@@ -265,8 +266,59 @@
             {% endif %}
         </div>
     </div>
+
+    {# === Location map ============================================== #}
+    {# Показываем только если у объекта есть координаты. Leaflet + OSM,
+       маркер в фирменном #ff385c. Ссылка на Google Maps — для быстрой
+       сверки локации админом. #}
+    {% if prop.latitude and prop.longitude %}
+    <div class="map-section">
+        <h3 class="desc-title">Location</h3>
+        <div id="propertyMap"
+             data-lat="{{ prop.latitude }}"
+             data-lng="{{ prop.longitude }}"></div>
+        <div class="map-coords">
+            Coordinates: <span class="fw-bold text-dark">{{ '%.6f' | format(prop.latitude) }}, {{ '%.6f' | format(prop.longitude) }}</span>
+            &nbsp;·&nbsp;
+            <a href="https://www.google.com/maps?q={{ prop.latitude }},{{ prop.longitude }}" target="_blank" rel="noopener">Open in Google Maps ↗</a>
+        </div>
+    </div>
+    {% endif %}
 </div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+    const el = document.getElementById('propertyMap');
+    if (!el) return; // no coords, section not rendered
+
+    const lat = parseFloat(el.dataset.lat);
+    const lng = parseFloat(el.dataset.lng);
+    if (isNaN(lat) || isNaN(lng)) return;
+
+    const map = L.map('propertyMap', {
+        scrollWheelZoom: false   // page scroll doesn't get stuck in map
+    }).setView([lat, lng], 15);
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(map);
+
+    // hodu-branded marker (#ff385c) instead of default blue
+    L.circleMarker([lat, lng], {
+        radius: 10,
+        color: '#ffffff',
+        weight: 3,
+        fillColor: '#ff385c',
+        fillOpacity: 1
+    }).addTo(map);
+
+    // Scroll-zoom only after click (UX standard for embedded maps)
+    map.on('click', () => map.scrollWheelZoom.enable());
+    map.on('mouseout', () => map.scrollWheelZoom.disable());
+})();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.umd.js"></script>
 <script>

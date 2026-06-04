@@ -390,9 +390,31 @@ class SpitogatosScraper(EnrichmentMixin, BaseScraper):
         if features:
             extra["features"] = features
 
-        # Coordinates: Spitogatos doesn't expose per-property coords in initial HTML
-        # (script tag has shared search-center coord, not property coord).
-        # Caller should use _lookup_area_coords() to resolve from location_areas table.
+        # Coordinates: extract from __NUXT__ SSR state.
+        # Spitogatos has 3+ geocodeType modes:
+        #   "exact"  → verified per-property coords (most listings)
+        #   "offset" → privacy-shifted real coords (slight blur)
+        #   "hidden" → intentionally hidden (luxury/VIP); coords are minified var like `a`
+        # For hidden mode, caller falls back to refdata centroid (best we can do).
+        coord_match = re.search(
+            r'geocodeType\s*:\s*"(\w+)"\s*,\s*longitude\s*:\s*(-?\d+\.\d+|[a-z_]\w*)\s*,\s*latitude\s*:\s*(-?\d+\.\d+|[a-z_]\w*)',
+            html
+        )
+        if coord_match:
+            gtype = coord_match.group(1)
+            extra["geocode_type"] = gtype  # always store the type
+            try:
+                lng = float(coord_match.group(2))
+                lat = float(coord_match.group(3))
+                # Halkidiki bbox sanity (39.5-41 lat, 23-24.5 lng)
+                if 39.5 <= lat <= 41.0 and 23 <= lng <= 24.5:
+                    data["latitude"] = lat
+                    data["longitude"] = lng
+                # else: out of bbox — leave lat/lng unset, caller uses refdata centroid
+            except (ValueError, IndexError):
+                # gtype="hidden" with non-numeric coords (var ref like 'a')
+                # data["latitude"] stays unset → caller uses refdata centroid
+                pass
 
         # Agent / agency
         agency_a = tree.css_first(".property__agency h3 a")
