@@ -131,7 +131,7 @@
                     onclick="window.open('/property/{{ prop.id }}', '_blank')">
                     <td style="padding-left:20px;">
                         {% if prop.media %}
-                            <img src="/{{ prop.media[0].local_file_path | fix_path }}" class="admin-thumb" alt="thumb" style="border-radius: 4px; border: 1px solid #eee; {% if not prop.is_active %}opacity: 0.5;{% endif %}">
+                            <img src="/{{ prop.media[0].local_file_path | fix_path }}" class="admin-thumb" alt="thumb" loading="lazy" decoding="async" style="border-radius: 4px; border: 1px solid #eee; {% if not prop.is_active %}opacity: 0.5;{% endif %}">
                         {% else %}
                             <div class="admin-thumb-empty" style="border-radius: 4px;">N/A</div>
                         {% endif %}
@@ -168,9 +168,9 @@
                     onclick="window.open('/property/{{ candidate.id }}', '_blank')">
                     <td style="width: 75px; padding-left:20px;">
                         {% if candidate.media %}
-                            <img src="/{{ candidate.media[0].local_file_path | fix_path }}" class="admin-thumb" alt="thumb" style="border-radius: 4px; border: 1px solid #eee; {% if not candidate.is_active %}opacity: 0.5;{% endif %}">
+                            <img src="/{{ candidate.media[0].local_file_path | fix_path }}" class="admin-thumb" alt="thumb" loading="lazy" decoding="async" style="border-radius: 4px; border: 1px solid #eee; {% if not candidate.is_active %}opacity: 0.5;{% endif %}">
                         {% else %}
-                            <div class="admin-thumb-empty" style="border-radius: 4px;">N/A</div>
+                            <div class="admin-thumb-empty" loading="lazy" decoding="async" style="border-radius: 4px;">N/A</div>
                         {% endif %}
                     </td>
                     <td style="width: 25%;">

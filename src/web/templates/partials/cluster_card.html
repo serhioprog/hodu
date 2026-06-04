@@ -207,7 +207,7 @@
                     onclick="window.open('/property/{{ prop.id }}', '_blank')">
                     <td style="padding-left:20px;">
                         {% if prop.media %}
-                            <img src="/{{ prop.media[0].local_file_path | fix_path }}" class="admin-thumb" alt="thumb" style="border-radius: 4px; border: 1px solid #eee; {% if not prop.is_active %}opacity: 0.5;{% endif %}">
+                            <img src="/{{ prop.media[0].local_file_path | fix_path }}" class="admin-thumb" alt="thumb" loading="lazy" decoding="async" style="border-radius: 4px; border: 1px solid #eee; {% if not prop.is_active %}opacity: 0.5;{% endif %}">
                         {% else %}
                             <div class="admin-thumb-empty" style="border-radius: 4px;">N/A</div>
                         {% endif %}

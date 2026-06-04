@@ -19,7 +19,7 @@
     <div class="col-md-6">
       <div class="dissolved-prop-block">
         {% if f.prop_a.thumbnail %}
-          <img class="dissolved-prop-thumb" src="/{{ f.prop_a.thumbnail }}" alt="">
+          <img class="dissolved-prop-thumb" src="/{{ f.prop_a.thumbnail }}" alt="" loading="lazy" decoding="async">
         {% else %}
           <div class="dissolved-prop-thumb-placeholder"></div>
         {% endif %}
