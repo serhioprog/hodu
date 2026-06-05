@@ -2150,7 +2150,7 @@ async def api_admin_properties(
     SORTABLE_COLUMNS = {
         "site_property_id":  Property.site_property_id,
         "source_domain":     Property.source_domain,
-        "area":              Property.calc_municipality,  # UI shows calc_municipality as "Area"
+        "area":              func.coalesce(Property.calc_area, Property.calc_municipality, Property.area),  # UI shows calc_municipality as "Area"
         "category":          Property.category,
         "size_sqm":          Property.size_sqm,
         "price":             Property.price,
@@ -2181,12 +2181,13 @@ async def api_admin_properties(
         if search:
             s = f"%{search.lower()}%"
             conditions.append(or_(
-                func.lower(Property.site_property_id).like(s),
-                func.lower(Property.source_domain).like(s),
-                func.lower(Property.calc_municipality).like(s),
-                func.lower(Property.area).like(s),
-                func.lower(Property.category).like(s),
-            ))
+            func.lower(Property.site_property_id).like(s),
+            func.lower(Property.source_domain).like(s),
+            func.lower(Property.calc_area).like(s),
+            func.lower(Property.calc_municipality).like(s),
+            func.lower(Property.area).like(s),
+            func.lower(Property.category).like(s),
+        ))
         if source:
             conditions.append(Property.source_domain == source)
         if area:
@@ -2287,7 +2288,7 @@ async def api_admin_properties(
                 "price":             prop.price,
                 "size_sqm":          int(prop.size_sqm) if prop.size_sqm else None,
                 "category":          prop.category,
-                "area":              prop.calc_municipality or prop.area,
+                "area":              prop.calc_area or prop.calc_municipality or prop.area,
                 "status":            (prop.status.value if hasattr(prop.status, "value") else str(prop.status)),
                 "is_active":         prop.is_active,
                 "last_checked_at":   prop.last_checked_at.isoformat() if prop.last_checked_at else None,

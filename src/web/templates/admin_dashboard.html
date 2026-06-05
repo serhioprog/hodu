@@ -1035,8 +1035,8 @@ window.IS_ADMIN = {{ current_user.is_admin | tojson }};
                             <!-- ===== Report schedule ===== -->
                             <div class="col-md-6">
                                 <div class="filter-panel p-4">
-                                    <h6 class="fw-bold mb-1">Email reports — delivery</h6>
-                                    <p class="text-muted small mb-3">Daily reports go out only on days you enable below.</p>
+                                    <h6 class="fw-bold mb-1">Email reports — daily delivery</h6>
+                                    <p class="text-muted small mb-3">Set a different time per weekday. Uncheck to disable that day.</p>
 
                                     {% for d, lbl in _all_days %}
                                     {% set t = _rep_pd.get(d, '') %}
@@ -1428,7 +1428,9 @@ function initPropertiesContainer(container) {
             { data: 'source_domain', render: escapeHtml },
             {
                 data: 'area',
-                render: function (data) { return escapeHtml(data) || '—'; },
+                render: function (data, type, row) {
+                    return `<span title="${escapeHtml(row.area_full || data || '')}">${escapeHtml(data) || '—'}</span>`;
+                },
             },
             {
                 data: 'category',

@@ -322,6 +322,9 @@ class SousourasRealestateScraper(EnrichmentMixin, BaseScraper):
                 return []
 
             # ---- Phase 1.2: for each card, visit detail page, parse rich data ----
+            # Fresh page for detail phase (previous category pages closed)
+            page = await browser.new_page()
+            page.on("pageerror", lambda e: None)
             for i, card in enumerate(cards, 1):
                 url = card["url"]
                 site_id = _extract_id_from_url(url)

@@ -258,6 +258,11 @@ class KassandraPropertiesScraper(EnrichmentMixin, BaseScraper):
             max_pages = 20  # safety ceiling per category
 
             for category in _CATEGORIES:
+                # Fresh page per category — fixes Playwright driver crash from
+                # accumulated JS errors across category transitions
+                page = await browser.new_page()
+                # Swallow JS errors so driver doesn't crash on malformed pageError.location
+                page.on("pageerror", lambda e: None)
                 search_url = _SEARCH_URL_TEMPLATE.format(cat=category, min_price=min_price)
                 logger.info(f"[{self.source_domain}] === category: {category} ===")
                 page_num = 1
@@ -341,12 +346,20 @@ class KassandraPropertiesScraper(EnrichmentMixin, BaseScraper):
 
                 cat_new = len(cards) - cat_card_count_before
                 logger.info(f"[{self.source_domain}] category {category}: {cat_new} new cards")
+                # Close page to release resources before next category
+                try:
+                    await page.close()
+                except Exception:
+                    pass
 
             if not cards:
                 logger.warning(f"[{self.source_domain}] empty search — no listings or selector changed")
                 return []
 
             # ---- Phase 1.2: for each card, visit detail page, parse rich data ----
+            # Fresh page for detail phase (previous category pages closed)
+            page = await browser.new_page()
+            page.on("pageerror", lambda e: None)
             for i, card in enumerate(cards, 1):
                 url = card["url"]
                 site_id = _extract_id_from_url(url)
