@@ -142,6 +142,12 @@ class Settings(BaseSettings):
     """
 
     MAX_PAIRS_PER_PROPERTY: int = 50
+
+    # V1-AggregatorDomains (Sprint 9): domains acting as aggregators where
+    # multiple agencies list the SAME physical property under different
+    # site IDs. Engine 1 allows same-domain pair generation for these
+    # (vs. the default cross-source-only rule). Defaults to {"spitogatos.gr"}.
+    AGGREGATOR_DOMAINS: set[str] = {"spitogatos.gr"}
     PHASH_MIN_MATCHES: int = 2
     """Minimum number of matching pHashes between two properties for a
     'phash bypass' match (skip embedding similarity check). Used in

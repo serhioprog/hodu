@@ -69,6 +69,8 @@ SELECT
     p2.id            AS b_id,
     p1.image_phashes AS a_phashes,
     p2.image_phashes AS b_phashes,
+    p1.source_domain AS a_source_domain,
+    p2.source_domain AS b_source_domain,
     p1.category      AS a_category,
     p2.category      AS b_category,
     -- V1-AttributeGate (Sprint 9): per-side structured attributes
@@ -92,7 +94,10 @@ CROSS JOIN LATERAL (
     FROM eligible p2_inner
     WHERE
         p2_inner.id > p1.id
-        AND p2_inner.source_domain != p1.source_domain
+        AND (
+            p2_inner.source_domain != p1.source_domain
+            OR p1.source_domain = ANY(:aggregator_domains)
+        )
         AND 1 - (p1.embedding <=> p2_inner.embedding) > :sim_reject
         AND (
             p1.price IS NULL OR p2_inner.price IS NULL
@@ -381,8 +386,9 @@ class InternalDuplicateDetector:
         rows = (await session.execute(
             _PAIR_SQL,
             {
-                "sim_reject":   settings.SIM_REJECT,
-                "per_p1_limit": settings.MAX_PAIRS_PER_PROPERTY,
+                "sim_reject":         settings.SIM_REJECT,
+                "per_p1_limit":       settings.MAX_PAIRS_PER_PROPERTY,
+                "aggregator_domains": list(settings.AGGREGATOR_DOMAINS),
             },
         )).fetchall()
         logger.info(f"[Matcher] found pairs > {settings.SIM_REJECT}: {len(rows)}")
@@ -680,9 +686,19 @@ class InternalDuplicateDetector:
         a_non_stock = [h for h in (row.a_phashes or []) if h not in stock_phashes]
         b_non_stock = [h for h in (row.b_phashes or []) if h not in stock_phashes]
         PHOTO_MIN_FOR_NEGATIVE = 4
+        # V1-AggregatorException (Sprint 9): exempt same-source aggregator pairs.
+        # On aggregator sites (e.g. spitogatos.gr) the SAME physical property is
+        # listed by different agencies, each with their own photo set → phash 0
+        # is EXPECTED, not a negative signal. Rule still applies to cross-source
+        # pairs and to non-aggregator same-source.
+        is_aggregator_same_source = (
+            getattr(row, "a_source_domain", None) == getattr(row, "b_source_domain", None)
+            and getattr(row, "a_source_domain", None) in settings.AGGREGATOR_DOMAINS
+        )
         if (len(a_non_stock) >= PHOTO_MIN_FOR_NEGATIVE
             and len(b_non_stock) >= PHOTO_MIN_FOR_NEGATIVE
-            and phash_matches == 0):
+            and phash_matches == 0
+            and not is_aggregator_same_source):
             return False, "photo_evidence_zero"
 
         return True, None
