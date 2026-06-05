@@ -308,8 +308,14 @@ class GreximoScraper(EnrichmentMixin, BaseScraper):
             if text:
                 features.append(text)
         if features:
-            # extra_features format может быть dict или list — нужно проверить
-            template.extra_features = {"amenities": features}
+            # Flatten amenities into top-level snake_case boolean keys so
+            # quality metric (counts extra_features keys) reflects actual features.
+            flattened = {}
+            for amenity in features:
+                key = re.sub(r"[^a-z0-9]+", "_", amenity.lower()).strip("_")
+                if key:
+                    flattened[key] = True
+            template.extra_features = flattened
 
         # Step 5: Address / location_raw enrichment
         self._parse_address(tree, template)
